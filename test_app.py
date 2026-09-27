@@ -1,5 +1,6 @@
 import io
 import os
+import datetime
 import re
 import pandas as pd
 import streamlit as st
@@ -21,12 +22,27 @@ DISK_PATH = os.getenv("DISK_PATH")
 
 
 @st.cache_data(ttl=300)
-def load_data(sheet_name: str) -> pd.DataFrame:
-    """Загружает конкретный лист из Excel-файла на Яндекс.Диске."""
+def load_data(sheet_name: str) -> tuple[pd.DataFrame, str]:
+    """Загружает конкретный лист из Excel-файла на Яндекс.Диске
+
+    и возвращает DataFrame вместе с датой последнего изменения файла.
+    """
     y = yadisk.YaDisk(token=TOKEN)
     if not y.check_token():
         raise Exception("Неверный токен Яндекс.Диска")
 
+    # 1. Получаем метаданные файла для определения даты модификации
+    meta = y.get_meta(DISK_PATH)
+    raw_modified = getattr(meta, "modified", None)
+
+    if raw_modified:
+        # Переводим из UTC в Московское время (UTC+3)
+        msk_time = raw_modified + datetime.timedelta(hours=3)
+        formatted_modified = msk_time.strftime("%d.%m.%Y в %H:%M")
+    else:
+        formatted_modified = "Неизвестно"
+
+    # 2. Скачиваем файл в память
     buffer = io.BytesIO()
     y.download(DISK_PATH, buffer)
     buffer.seek(0)
@@ -35,22 +51,21 @@ def load_data(sheet_name: str) -> pd.DataFrame:
 
     # Проверяем наличие листа в файле
     if sheet_name not in excel_file.sheet_names:
-        return pd.DataFrame()
+        return pd.DataFrame(), formatted_modified
 
     df = excel_file.parse(sheet_name=sheet_name)
 
-    # Если лист полностью пустой
     if df.empty:
-        return df
+        return df, formatted_modified
 
     # Очищаем от NaN
     df = df.fillna("")
 
-    # Приводим типы к строкам и зачищаем .0 у кодов (если колонка есть)
+    # Приводим типы к строкам и зачищаем .0 у кодов
     if "Код" in df.columns:
         df["Код"] = df["Код"].astype(str).str.replace(r"\.0$", "", regex=True)
 
-    # Создаем объединение всех полей в одну нижнерегистровую строку для быстрого мульти-поиска
+    # Создаем поисковый корпус
     search_columns = [
         "Номенклатура",
         "Код",
@@ -69,7 +84,7 @@ def load_data(sheet_name: str) -> pd.DataFrame:
     else:
         df["_search_corpus"] = ""
 
-    return df
+    return df, formatted_modified
 
 
 def highlight_text(text: str, query_tokens: list[str]) -> str:
@@ -97,22 +112,36 @@ def highlight_text(text: str, query_tokens: list[str]) -> str:
 
 st.title("📦 Где что лежит")
 
-# 1. Переключатель листов Excel (ОС Главная по умолчанию)
-SHEET_OPTIONS = ["Закупки", "ОС Главная", "Пластик"]
-selected_sheet = st.radio(
-    "📄 Раздел учета:",
-    options=SHEET_OPTIONS,
-    index=0,  # "Закупки" по умолчанию
-    horizontal=True,
-)
+# --- Блок управления: Выбор листа и Кнопка обновления ---
+# Делим строку на 2 колонки: левая под переключатель, правая — под кнопку
+col_sheet, col_btn = st.columns([4, 1], vertical_alignment="bottom")
 
-# 2. Загрузка данных выбранного листа
+with col_sheet:
+    SHEET_OPTIONS = ["Закупки", "ОС Главная", "Пластик"]
+    selected_sheet = st.radio(
+        "📄 Раздел учета:",
+        options=SHEET_OPTIONS,
+        index=0,
+        horizontal=True,
+    )
+
+with col_btn:
+    # Кнопка сброса кэша и перезагрузки
+    if st.button("🔄 Обновить", use_container_width=True, help="Скачать свежую версию с Яндекс.Диска (задержка несколько минут)"):
+        load_data.clear()  # Очищаем кэш функции загрузки
+        st.toast("Данные успешно обновлены с Диска!", icon="🎉")
+        st.rerun()  # Перезапускаем приложение для считывания новых данных
+
+# 2. Загрузка данных выбранного листа и даты обновления файла
 try:
     with st.spinner(f"Загрузка раздела «{selected_sheet}»..."):
-        df = load_data(selected_sheet)
+        df, last_updated = load_data(selected_sheet)
 except Exception as e:
     st.error(f"Ошибка загрузки базы: {e}")
     st.stop()
+
+# Выводим подпись о последнем обновлении сразу под названием или переключателем
+st.caption(f"🕒 Данные в последний раз обновлены на Диске: **{last_updated}** (МСК)")
 
 # 3. Проверка на пустой лист
 if df.empty:
