@@ -165,8 +165,19 @@ if df.empty:
 # Вывод справочника настроек печати (Только для листа «Пластик»)
 if selected_sheet == "Пластик" and not df_print_settings.empty:
     with st.expander("⚙️ Справочник: Настройки печати", expanded=True):
+        # Исключаем техническую колонку _search_corpus из отображения
         display_cols = [c for c in df_print_settings.columns if c != "_search_corpus"]
-        st.dataframe(df_print_settings[display_cols], use_container_width=True, hide_index=True)
+        df_display = df_print_settings[display_cols].copy()
+
+        # Форматируем значение 1 или 1.0 обратно в 100% (а также любые другие проценты)
+        for col in df_display.columns:
+            # Преобразуем числовые/строковые значения 1 или 1.0 в "100%"
+            df_display[col] = df_display[col].apply(
+                lambda x: "100%" if str(x).strip() in ["1", "1.0"] 
+                else (f"{round(float(x)*100)}%" if isinstance(x, (int, float)) and 0 < x < 1 else x)
+            )
+
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
 
 if "search_input_field" not in st.session_state:
     st.session_state.search_input_field = ""
