@@ -346,7 +346,7 @@ def render_plastic_analytics(df: pd.DataFrame):
 # 4. ОСНОВНОЙ РЕНДЕР МОДУЛЯ
 # =============================================================================
 def render():
-    st.title("📊 Аналитика и Отчеты")
+    st.title("📊 Отчеты")
 
     SHEET_OPTIONS = ["Закупки", "ОС Главная", "Пластик"]
     selected_sheet = st.radio(

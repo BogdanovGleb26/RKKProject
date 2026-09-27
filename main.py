@@ -27,6 +27,13 @@ app_mode = st.sidebar.radio(
 )
 
 st.sidebar.divider()
+
+st.sidebar.link_button(
+    "💻 Исходный код на GitHub",
+    "https://github.com/BogdanovGleb26/RKKProject",
+    use_container_width=True,
+)
+
 st.sidebar.caption("© 2026 Инвентаризация v1.0.0")
 
 # --- Маршрутизация (Роутинг) ---
