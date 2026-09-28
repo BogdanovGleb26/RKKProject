@@ -117,11 +117,14 @@ def render():
                 plastic_type = str(row.get("Тип", "")).strip()
                 plastic_color = str(row.get("Цвет", "")).strip()
 
+                weight = str(row.get("Вес", "")).strip()
+
                 hl_name = highlight_text(name, tokens)
                 hl_code = highlight_text(code, tokens)
                 hl_storage = highlight_text(storage if storage else "Не указано", tokens)
                 hl_project = highlight_text(project if project else "—", tokens)
                 hl_curator = highlight_text(curator if curator else "—", tokens)
+                hl_dept = highlight_text(dept if dept else "—", tokens)
                 hl_plastic_type = highlight_text(plastic_type, tokens)
                 hl_plastic_color = highlight_text(plastic_color, tokens)
 
@@ -147,11 +150,12 @@ def render():
 
                     badges = [
                         create_badge("🚀", "Проект", hl_project, "#eef2ff", "#3730a3") if project else "",
-                        create_badge("🏢", "Отдел", dept, "#f3f4f6", "#1f2937") if dept else "",
+                        create_badge("🏢", "Отдел", hl_dept, "#f3f4f6", "#1f2937") if dept else "",
                         create_badge("👤", "Куратор", hl_curator, "#f0fdf4", "#166534") if curator else "",
                         create_badge("📄", "Заявка", doc, "#fef3c7", "#92400e") if doc else "",
                         create_badge("🧵", "Тип", hl_plastic_type, "#e0f2fe", "#0369a1") if plastic_type else "",
-                        create_badge("🎨", "Цвет", hl_plastic_color, "#fce7f3", "#be185d") if plastic_color else ""
+                        create_badge("🎨", "Цвет", hl_plastic_color, "#fce7f3", "#be185d") if plastic_color else "",
+                        create_badge("⚖️", "Остаток", f"{weight} г", "#fef3c7", "#78350f") if weight else ""
                     ]
                     
                     badges_html = "".join([b for b in badges if b != ""])

@@ -5,3 +5,7 @@ __pycache__/
 venv/
 .venv/
 save_changes_before_promt.py
+
+*.xlsx
+*.xls
+*.xlsm
