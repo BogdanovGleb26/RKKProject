@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+import re
 from data_loader import load_data
 from utils import highlight_text, create_badge
 
@@ -53,14 +54,14 @@ def render():
 
     # Быстрые фильтры
     QUICK_FILTERS = {
-        "Закупки": [("🖨️ Пластик", "Пластик"), ("🔌 Принтер", "Принтер"), ("📍 Цех №4", "Цех №4"), ("👤 Смирнова", "Смирнова")],
+        "Закупки": [("🖨️ Пластик", "пластик"), ("🔌 Принтер", "принтер"), ("📍 Цех №4", "цех №4"), ("👤 Смирнова", "смирнова")],
         "ОС Главная": [("⚙️ Система", "система"), ("🚉 Станция", "станция"), ("📷 Камера", "камера"), ("🔢 Цифровой", "цифровой")],
-        "Пластик": [("🧵 PLA", "PLA"), ("⚙️ PETG", "PETG"),("👌 Filamentarno", "Filamentarno"),("🖤 Чёрный", "черный")]
+        "Пластик": [("🧵 PLA", "PLA"), ("⚙️ PETG", "PETG"),("👌 ABS", "ABS"),("🖤 Чёрный", "черный"), ("PLA + 💚", "PLA зеленый")]
     }
 
     current_filters = QUICK_FILTERS.get(selected_sheet, [])
     if current_filters:
-        st.caption("⚡ Быстрый фильтр:")
+        st.caption("⚡ Быстрый поиск:")
         chip_cols = st.columns(len(current_filters))
         for idx, (btn_label, search_term) in enumerate(current_filters):
             with chip_cols[idx]:
@@ -68,7 +69,7 @@ def render():
                     st.session_state.search_input_field = search_term
                     st.rerun()
 
-    raw_input = st.text_input("Поиск", placeholder="Название, код, локация...", key="search_input_field")
+    raw_input = st.text_input("Поиск", placeholder="Название, код, место хранения...", key="search_input_field")
     search_query = raw_input.strip().lower()
 
     if not search_query:
@@ -89,7 +90,22 @@ def render():
         else:
             tokens = [t for t in search_query.split() if len(t) > 0]
             if tokens and "_search_corpus" in df.columns:
-                mask = df["_search_corpus"].apply(lambda corpus: all(t in corpus for t in tokens))
+                
+                def matches_exact_words(corpus: str) -> bool:
+                    corpus_str = str(corpus)
+                    for t in tokens:
+                        # Для коротких кодов/материалов (PLA, ASA, PA, №4) ищем точное совпадение
+                        if len(t) <= 3:
+                            pattern = r"(?<!\w)" + re.escape(t) + r"(?!\w)"
+                        # Для длинных слов (принтер, желтый) проверяем начало слова, разрешая окончания (принтеры)
+                        else:
+                            pattern = r"(?<!\w)" + re.escape(t)
+
+                        if not re.search(pattern, corpus_str):
+                            return False
+                    return True
+
+                mask = df["_search_corpus"].apply(matches_exact_words)
             else:
                 mask = pd.Series([False] * len(df))
 
@@ -140,7 +156,7 @@ def render():
                 with st.expander(expander_title):
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.markdown(f"**📍 Локация:** {hl_storage}", unsafe_allow_html=True)
+                        st.markdown(f"**📍 Место хранения:** {hl_storage}", unsafe_allow_html=True)
                         if "Сумма" in df.columns: st.markdown(f"**📦 Сумма:** {sum_val}")
                     with col2:
                         if "Статус" in df.columns: st.markdown(f"**📌 Статус:** {status if status else '—'}")
