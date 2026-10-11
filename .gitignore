@@ -3,6 +3,8 @@ __pycache__/
 *.env
 .vscode/
 venv/
+logs/
+.logs/
 .venv/
 save_changes_before_promt.py
 

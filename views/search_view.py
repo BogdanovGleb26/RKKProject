@@ -3,34 +3,62 @@ import streamlit as st
 import re
 from data_loader import load_data
 from utils import highlight_text, create_badge
+import config
+
+
+# Сколько результатов показывать на одной странице
+PAGE_SIZE = 50
+
 
 def render():
     st.title("📦 Поиск по складу")
 
+    source = st.session_state.get("data_source", config.DEFAULT_DATA_SOURCE)
+    source_label = "Локальный ПК" if source == "local" else "Яндекс.Диск"
+
+    # Список листов + ключ для сохранения выбора между вкладками
+    SHEET_OPTIONS = ["Закупки", "ОС Главная", "Пластик"]
+
+    if "selected_sheet_search" not in st.session_state:
+        st.session_state.selected_sheet_search = SHEET_OPTIONS[0]
+
     col_sheet, col_btn = st.columns([4, 1], vertical_alignment="bottom")
 
     with col_sheet:
-        SHEET_OPTIONS = ["Закупки", "ОС Главная", "Пластик"]
-        selected_sheet = st.radio("📄 Раздел учета:", options=SHEET_OPTIONS, index=0, horizontal=True)
+        # ← 4.2: segmented_control вместо radio(horizontal=True)
+        # ← 2.3: key сохраняет выбор между вкладками
+        selected_sheet = st.segmented_control(
+            "📄 Раздел учета:",
+            options=SHEET_OPTIONS,
+            default=st.session_state.selected_sheet_search,
+            key="selected_sheet_search",
+            selection_mode="single",
+        ) or SHEET_OPTIONS[0]
 
     with col_btn:
-        if st.button("🔄 Обновить", use_container_width=True, help="Скачать свежую версию с Яндекс.Диска (задержка несколько минут)"):
+        if st.button(
+            "🔄 Обновить",
+            width="stretch",  # ← 4.1
+            help=f"Сбросить кэш и перечитать данные из источника ({source_label})",
+        ):
             load_data.clear()
-            st.toast("Данные успешно обновлены с Диска!", icon="🎉")
+            st.toast(f"Кэш сброшен! Данные перечитаны ({source_label})", icon="🎉")
             st.rerun()
 
     # Загрузка данных
     try:
-        with st.spinner(f"Загрузка раздела «{selected_sheet}»..."):
-            df, last_updated = load_data(selected_sheet)
+        with st.spinner(f"Загрузка раздела «{selected_sheet}» из {source_label}..."):
+            # ← прокидываем source (сделано ранее)
+            df, last_updated = load_data(selected_sheet, source=source)
             df_print_settings = pd.DataFrame()
             if selected_sheet == "Пластик":
-                df_print_settings, _ = load_data("Настройка печати")
+                df_print_settings, _ = load_data("Настройка печати", source=source)
     except Exception as e:
         st.error(f"Ошибка загрузки базы: {e}")
         st.stop()
 
-    st.caption(f"🕒 Данные в последний раз обновлены на Диске: **{last_updated}** (МСК)")
+    # ← 4.3: убрали «на Диске», источник уже виден в сайдбаре
+    st.caption(f"🕒 Данные обновлены: **{last_updated}**")
 
     if df.empty:
         st.info(f"📭 Лист **«{selected_sheet}»** пока пуст или не содержит данных.")
@@ -44,19 +72,26 @@ def render():
 
             for col in df_display.columns:
                 df_display[col] = df_display[col].apply(
-                    lambda x: "100%" if str(x).strip() in ["1", "1.0"] 
+                    lambda x: "100%" if str(x).strip() in ["1", "1.0"]
                     else (f"{round(float(x)*100)}%" if isinstance(x, (int, float)) and 0 < x < 1 else x)
                 )
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            st.dataframe(df_display, width="stretch", hide_index=True)  # ← 4.1
 
     if "search_input_field" not in st.session_state:
+        st.session_state.search_input_field = ""
+
+        # Колбэки для безопасного изменения session_state
+    def _set_search(term: str):
+        st.session_state.search_input_field = term
+
+    def _clear_search():
         st.session_state.search_input_field = ""
 
     # Быстрые фильтры
     QUICK_FILTERS = {
         "Закупки": [("🖨️ Пластик", "пластик"), ("🔌 Принтер", "принтер"), ("📍 Цех №4", "цех №4"), ("👤 Смирнова", "смирнова")],
         "ОС Главная": [("⚙️ Система", "система"), ("🚉 Станция", "станция"), ("📷 Камера", "камера"), ("🔢 Цифровой", "цифровой")],
-        "Пластик": [("🧵 PLA", "PLA"), ("⚙️ PETG", "PETG"),("👌 ABS", "ABS"),("🖤 Чёрный", "черный"), ("PLA + 💚", "PLA зеленый")]
+        "Пластик": [("🧵 PLA", "PLA"), ("⚙️ PETG", "PETG"), ("👌 ABS", "ABS"), ("🖤 Чёрный", "черный"), ("PLA + 💚", "PLA зеленый")]
     }
 
     current_filters = QUICK_FILTERS.get(selected_sheet, [])
@@ -65,11 +100,32 @@ def render():
         chip_cols = st.columns(len(current_filters))
         for idx, (btn_label, search_term) in enumerate(current_filters):
             with chip_cols[idx]:
-                if st.button(btn_label, use_container_width=True, key=f"btn_{selected_sheet}_{idx}"):
-                    st.session_state.search_input_field = search_term
-                    st.rerun()
+                st.button(
+                    btn_label,
+                    width="stretch",
+                    key=f"btn_{selected_sheet}_{idx}",
+                    on_click=_set_search,
+                    args=(search_term,),
+                )
 
-    raw_input = st.text_input("Поиск", placeholder="Название, код, место хранения...", key="search_input_field")
+    # ← 2.5: кнопка «Сбросить поиск» рядом с полем ввода
+    col_search, col_clear = st.columns([5, 1], vertical_alignment="bottom")
+
+    with col_search:
+        raw_input = st.text_input(
+            "Поиск",
+            placeholder="Название, код, место хранения... (например: «без места»)",
+            key="search_input_field",
+        )
+    with col_clear:
+        st.button(
+            "✖ Сброс",
+            width="stretch",
+            help="Очистить поиск",
+            on_click=_clear_search,
+            disabled=not st.session_state.search_input_field,
+        )
+
     search_query = raw_input.strip().lower()
 
     if not search_query:
@@ -78,7 +134,14 @@ def render():
         with col1:
             st.metric(label="Всего позиций", value=len(df))
         with col2:
-            locations_count = df["Место хранения"].replace("", None).nunique() if "Место хранения" in df.columns else 0
+            # ← 1.4: пустое место больше не считается за ячейку
+            if "Место хранения" in df.columns:
+                locations_count = df.loc[
+                    df["Место хранения"].astype(str).str.strip() != "",
+                    "Место хранения",
+                ].nunique()
+            else:
+                locations_count = 0
             st.metric(label="Занято ячеек", value=locations_count)
     else:
         if search_query == "без места":
@@ -90,17 +153,13 @@ def render():
         else:
             tokens = [t for t in search_query.split() if len(t) > 0]
             if tokens and "_search_corpus" in df.columns:
-                
                 def matches_exact_words(corpus: str) -> bool:
                     corpus_str = str(corpus)
                     for t in tokens:
-                        # Для коротких кодов/материалов (PLA, ASA, PA, №4) ищем точное совпадение
                         if len(t) <= 3:
                             pattern = r"(?<!\w)" + re.escape(t) + r"(?!\w)"
-                        # Для длинных слов (принтер, желтый) проверяем начало слова, разрешая окончания (принтеры)
                         else:
                             pattern = r"(?<!\w)" + re.escape(t)
-
                         if not re.search(pattern, corpus_str):
                             return False
                     return True
@@ -110,12 +169,33 @@ def render():
                 mask = pd.Series([False] * len(df))
 
         filtered_df = df[mask]
-        st.caption(f"Найдено позиций: {len(filtered_df)}")
+        total_found = len(filtered_df)
 
         if filtered_df.empty:
             st.warning("Ничего не найдено.")
         else:
-            for index, row in filtered_df.iterrows():
+            # ← 2.1: пагинация — 50 результатов на страницу
+            total_pages = (total_found + PAGE_SIZE - 1) // PAGE_SIZE
+            if total_pages > 1:
+                st.caption(f"Найдено позиций: **{total_found}** — страница 1 из {total_pages}")
+                page = st.number_input(
+                    "Страница",
+                    min_value=1,
+                    max_value=total_pages,
+                    value=1,
+                    step=1,
+                    key=f"page_{selected_sheet}_{search_query}",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.caption(f"Найдено позиций: {total_found}")
+                page = 1
+
+            start = (page - 1) * PAGE_SIZE
+            end = start + PAGE_SIZE
+            page_df = filtered_df.iloc[start:end]
+
+            for index, row in page_df.iterrows():
                 raw_name = str(row.get("Название", "")).strip()
                 raw_nom = str(row.get("Номенклатура", "")).strip()
                 name = raw_name if raw_name else (raw_nom if raw_nom else "Без названия")
@@ -129,10 +209,9 @@ def render():
                 qr_code = str(row.get("QR Код", "—")).strip()
                 sum_val = str(row.get("Сумма", "—")).strip()
                 doc = str(row.get("Заявка на оплату", "")).strip()
-                
+
                 plastic_type = str(row.get("Тип", "")).strip()
                 plastic_color = str(row.get("Цвет", "")).strip()
-
                 weight = str(row.get("Вес", "")).strip()
 
                 hl_name = highlight_text(name, tokens)
@@ -145,25 +224,31 @@ def render():
                 hl_plastic_color = highlight_text(plastic_color, tokens)
 
                 loc_tag = f"✅ [{storage}]" if storage else "❓ [Без локации]"
-                
+
                 extra_info = []
-                if plastic_type: extra_info.append(plastic_type)
-                if plastic_color: extra_info.append(plastic_color)
+                if plastic_type:
+                    extra_info.append(plastic_type)
+                if plastic_color:
+                    extra_info.append(plastic_color)
                 extra_suffix = f" | {' '.join(extra_info)}" if extra_info else ""
-                
+
                 expander_title = f"{loc_tag} {name} | Код: {code}{extra_suffix}"
 
                 with st.expander(expander_title):
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown(f"**📍 Место хранения:** {hl_storage}", unsafe_allow_html=True)
-                        if "Сумма" in df.columns: st.markdown(f"**📦 Сумма:** {sum_val}")
+                        if "Сумма" in df.columns:
+                            st.markdown(f"**📦 Сумма:** {sum_val}")
                     with col2:
-                        if "Статус" in df.columns: st.markdown(f"**📌 Статус:** {status if status else '—'}")
-                        if "QR Код" in df.columns: st.markdown(f"**🏷️ QR код:** {qr_code}")
+                        if "Статус" in df.columns:
+                            st.markdown(f"**📌 Статус:** {status if status else '—'}")
+                        if "QR Код" in df.columns:
+                            st.markdown(f"**🏷️ QR код:** {qr_code}")
 
                     st.divider()
 
+                    # ← 1.1: create_badge теперь сам экранирует сырые значения
                     badges = [
                         create_badge("🚀", "Проект", hl_project, "#eef2ff", "#3730a3") if project else "",
                         create_badge("🏢", "Отдел", hl_dept, "#f3f4f6", "#1f2937") if dept else "",
@@ -171,9 +256,9 @@ def render():
                         create_badge("📄", "Заявка", doc, "#fef3c7", "#92400e") if doc else "",
                         create_badge("🧵", "Тип", hl_plastic_type, "#e0f2fe", "#0369a1") if plastic_type else "",
                         create_badge("🎨", "Цвет", hl_plastic_color, "#fce7f3", "#be185d") if plastic_color else "",
-                        create_badge("⚖️", "Остаток", f"{weight} г", "#fef3c7", "#78350f") if weight else ""
+                        create_badge("⚖️", "Остаток", f"{weight} г", "#fef3c7", "#78350f") if weight else "",
                     ]
-                    
+
                     badges_html = "".join([b for b in badges if b != ""])
 
                     if badges_html:
