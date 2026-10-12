@@ -206,7 +206,7 @@ def render():
                 project = str(row.get("Проект", "")).strip()
                 dept = str(row.get("Отдел МТО", "")).strip()
                 curator = str(row.get("Куратор МТО", "")).strip()
-                qr_code = str(row.get("QR Код", "—")).strip()
+                qr_code = str(row.get("QR код", "—")).strip()
                 sum_val = str(row.get("Сумма", "—")).strip()
                 doc = str(row.get("Заявка на оплату", "")).strip()
 
@@ -243,7 +243,7 @@ def render():
                     with col2:
                         if "Статус" in df.columns:
                             st.markdown(f"**📌 Статус:** {status if status else '—'}")
-                        if "QR Код" in df.columns:
+                        if "QR код" in df.columns:
                             st.markdown(f"**🏷️ QR код:** {qr_code}")
 
                     st.divider()
