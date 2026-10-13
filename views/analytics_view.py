@@ -259,49 +259,98 @@ def render_os_analytics(df: pd.DataFrame):
 
     chart_col1, chart_col2 = st.columns(2)
 
+    # --- График 1: Топ-10 позиций по стоимости ---
     with chart_col1:
-        st.subheader("🚀 Размещение ОС по Проектам")
-        if project_col:
-            df_proj = df.copy()
-            df_proj[project_col] = df_proj[project_col].replace("", "Без проекта")
-            proj_data = df_proj.groupby(project_col).size().reset_index(name="Количество")
-            proj_data = proj_data.sort_values(by="Количество", ascending=True)
+        st.subheader("💰 Топ-10 позиций по стоимости")
+        if sum_col:
+            df_sum = df.copy()
 
-            fig_proj = px.bar(
-                proj_data, x="Количество", y=project_col, orientation="h",
-                text="Количество", color_discrete_sequence=["#3730a3"],
-            )
-            fig_proj.update_layout(
-                xaxis_title="Количество ОС (шт.)", yaxis_title=None,
-                height=380, margin=dict(l=10, r=10, t=20, b=10),
-            )
-            st.plotly_chart(fig_proj, width="stretch")
-        else:
-            st.info("Нет колонки «Проект».")
+            # Имя позиции: «Название», иначе «Номенклатура», иначе — код
+            def _name_for_chart(row):
+                name = str(row.get("Название", "")).strip()
+                if not name:
+                    name = str(row.get("Номенклатура", "")).strip()
+                if not name:
+                    code = str(row.get("Код", "")).strip()
+                    name = f"Код {code}" if code else "Без названия"
+                # Обрезаем для читаемости на графике
+                return name if len(name) <= 50 else name[:47] + "..."
 
-    with chart_col2:
-        st.subheader("💰 Топ-5 затратных Отделов МТО")
-        if dept_col and sum_col:
-            df_dept = df.copy()
-            df_dept["Сумма_число"], bad_sums = parse_numeric_column(df_dept[sum_col])
+            df_sum["_name"] = df_sum.apply(_name_for_chart, axis=1)
+            df_sum["_sum"], bad_sums = parse_numeric_column(df_sum[sum_col])
             _warn_bad_numbers(bad_sums, sum_col)
 
-            df_dept[dept_col] = df_dept[dept_col].replace("", "Не указан")
-            top_depts = df_dept.groupby(dept_col)["Сумма_число"].sum().reset_index()
-            top_depts = top_depts.sort_values(by="Сумма_число", ascending=False).head(5)
-            top_depts = top_depts.sort_values(by="Сумма_число", ascending=True)
+            # Отбрасываем позиции без суммы (0 или пусто)
+            df_sum = df_sum[df_sum["_sum"] > 0]
 
-            fig_top = px.bar(
-                top_depts, x="Сумма_число", y=dept_col, orientation="h",
-                text_auto=".2s", color_discrete_sequence=["#059669"],
-            )
-            fig_top.update_layout(
-                xaxis_title="Стоимость ОС (₽)", yaxis_title=None,
-                height=380, margin=dict(l=10, r=10, t=20, b=10),
-            )
-            st.plotly_chart(fig_top, width="stretch")
+            if df_sum.empty:
+                st.info("Нет данных по стоимости — все суммы пустые или не распарсились.")
+            else:
+                top_items = df_sum.nlargest(10, "_sum").sort_values("_sum", ascending=True)
+
+                fig_top = px.bar(
+                    top_items,
+                    x="_sum",
+                    y="_name",
+                    orientation="h",
+                    text_auto=".2s",
+                    color_discrete_sequence=["#059669"],
+                )
+                fig_top.update_layout(
+                    xaxis_title="Стоимость (₽)",
+                    yaxis_title=None,
+                    height=380,
+                    margin=dict(l=10, r=10, t=20, b=10),
+                )
+                st.plotly_chart(fig_top, width="stretch")
+                st.caption(
+                    f"Показано 10 из {len(df_sum)} позиций с указанной стоимостью."
+                )
         else:
-            st.info("Отсутствуют колонки «Отдел МТО» или «Сумма».")
+            st.info("Нет колонки «Сумма финальная» или «Сумма».")
+
+    # --- График 2: Распределение по местам хранения ---
+    with chart_col2:
+        st.subheader("📍 Топ-10 мест хранения")
+        if storage_col:
+            df_loc = df.copy()
+            df_loc[storage_col] = df_loc[storage_col].astype(str).str.strip()
+            df_loc = df_loc[df_loc[storage_col] != ""]
+
+            if df_loc.empty:
+                st.info("Нет позиций с указанным местом хранения.")
+            else:
+                loc_counts = (
+                    df_loc.groupby(storage_col)
+                    .size()
+                    .reset_index(name="Количество")
+                )
+                total_locations = len(loc_counts)
+                top_locs = loc_counts.nlargest(10, "Количество").sort_values(
+                    "Количество", ascending=True
+                )
+
+                fig_loc = px.bar(
+                    top_locs,
+                    x="Количество",
+                    y=storage_col,
+                    orientation="h",
+                    text="Количество",
+                    color_discrete_sequence=["#3730a3"],
+                )
+                fig_loc.update_layout(
+                    xaxis_title="Позиций (шт.)",
+                    yaxis_title=None,
+                    height=380,
+                    margin=dict(l=10, r=10, t=20, b=10),
+                )
+                st.plotly_chart(fig_loc, width="stretch")
+                st.caption(
+                    f"Показано 10 из {total_locations} ячеек. "
+                    f"Всего позиций с местом: {int(loc_counts['Количество'].sum())}."
+                )
+        else:
+            st.info("Нет колонки «Место хранения».")
 
 
 # =============================================================================
