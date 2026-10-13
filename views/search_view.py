@@ -169,6 +169,34 @@ def render():
                 mask = pd.Series([False] * len(df))
 
         filtered_df = df[mask]
+
+        # ← Fallback: если основной поиск (по границам слов) ничего не нашёл,
+        # а запрос целиком цифровой — пробуем найти как подстроку
+        # в колонках «Код» и «QR Код». Это позволяет найти позицию
+        # с кодом «ОБ00000000122», введя «122».
+        fallback_used = False
+        if (
+            filtered_df.empty
+            and search_query.isdigit()
+            and len(search_query) >= 3
+        ):
+            fallback_cols = [c for c in ("Код", "QR код") if c in df.columns]
+            if fallback_cols:
+                fallback_mask = pd.Series(False, index=df.index)
+                for col in fallback_cols:
+                    fallback_mask |= (
+                        df[col]
+                        .astype(str)
+                        .str.lower()
+                        .str.contains(search_query, regex=False)
+                    )
+                if fallback_mask.any():
+                    filtered_df = df[fallback_mask]
+                    fallback_used = True
+
+        # total_found теперь считаем ПОСЛЕ fallback —
+        # иначе пагинация не увидит новые результаты
+
         total_found = len(filtered_df)
 
         if filtered_df.empty:
@@ -176,8 +204,17 @@ def render():
         else:
             # ← 2.1: пагинация — 50 результатов на страницу
             total_pages = (total_found + PAGE_SIZE - 1) // PAGE_SIZE
+
+            # Подпись о результатах — своя для обычного поиска и fallback
+            if fallback_used:
+                caption_base = (
+                    f"🔎 По запросу «{search_query}» найдено по коду/QR: **{total_found}**"
+                )
+            else:
+                caption_base = f"Найдено позиций: **{total_found}**"
+
             if total_pages > 1:
-                st.caption(f"Найдено позиций: **{total_found}** — страница 1 из {total_pages}")
+                st.caption(f"{caption_base} — страница 1 из {total_pages}")
                 page = st.number_input(
                     "Страница",
                     min_value=1,
@@ -188,7 +225,7 @@ def render():
                     label_visibility="collapsed",
                 )
             else:
-                st.caption(f"Найдено позиций: {total_found}")
+                st.caption(caption_base)
                 page = 1
 
             start = (page - 1) * PAGE_SIZE

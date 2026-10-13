@@ -157,11 +157,11 @@ if st.sidebar.button(
 ):
     show_qr_modal(app_url)
 
-st.sidebar.link_button(
-    "💻 Исходный код на GitHub",
-    "https://github.com/BogdanovGleb26/RKKProject",
-    use_container_width=True,
-)
+# st.sidebar.link_button(
+#     "💻 Исходный код на GitHub",
+#     "https://github.com/BogdanovGleb26/RKKProject",
+#     use_container_width=True,
+# )
 
 st.sidebar.caption("© 2026 Инвентаризация v1.0.2")
 
