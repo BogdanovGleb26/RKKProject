@@ -163,7 +163,7 @@ if st.sidebar.button(
 #     use_container_width=True,
 # )
 
-st.sidebar.caption("© 2026 Инвентаризация v1.0.2")
+st.sidebar.caption("© 2026 Инвентаризация v1.0.3")
 
 
 # --- Маршрутизация (Роутинг) ---

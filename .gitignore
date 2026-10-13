@@ -5,6 +5,7 @@ __pycache__/
 venv/
 logs/
 .logs/
+images/
 .venv/
 save_changes_before_promt.py
 

@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 import re
 from data_loader import load_data
-from utils import highlight_text, create_badge
+from utils import highlight_text, create_badge, get_item_image_bytes
 import config
 
 
@@ -38,10 +38,14 @@ def render():
     with col_btn:
         if st.button(
             "🔄 Обновить",
-            width="stretch",  # ← 4.1
+            width="stretch",
             help=f"Сбросить кэш и перечитать данные из источника ({source_label})",
         ):
             load_data.clear()
+            # ← сбрасываем и кеш картинок
+            from utils import load_item_image_bytes, get_placeholder_bytes
+            load_item_image_bytes.clear()
+            get_placeholder_bytes.clear()
             st.toast(f"Кэш сброшен! Данные перечитаны ({source_label})", icon="🎉")
             st.rerun()
 
@@ -303,3 +307,22 @@ def render():
                             f'<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; margin-bottom: 4px;">{badges_html}</div>',
                             unsafe_allow_html=True,
                         )
+                    
+                    # ← Картинки: фото предмета + QR-код
+                    code_for_image = str(row.get("Код", "")).strip()
+                    photo_bytes = get_item_image_bytes(code_for_image, "photo")
+                    qr_bytes = get_item_image_bytes(code_for_image, "qr")
+
+                    st.divider()
+
+                    col_photo, col_qr = st.columns([1, 1])
+                    with col_photo:
+                        if photo_bytes:
+                            st.image(photo_bytes, width=400)
+                        else:
+                            st.caption("📷 Нет фото")
+                    with col_qr:
+                        if qr_bytes:
+                            st.image(qr_bytes, width=400)
+                        else:
+                            st.caption("📱 Нет QR")
