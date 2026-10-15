@@ -7,7 +7,8 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image
 
-from config import IMAGES_DIR
+import qrcode
+from config import IMAGES_DIR, QR_FORM_URL
 
 HIGHLIGHT_STYLE = (
     "background-color: #ffe066; padding: 2px 4px; "
@@ -218,4 +219,80 @@ def get_item_image_bytes(code: str, kind: str) -> bytes | None:
         except Exception:
             # Битый файл — покажем плейсхолдер.
             pass
+    return get_placeholder_bytes(PHOTO_MAX_SIZE)
+
+# =============================================================================
+# ГЕНЕРАЦИЯ QR-КОДОВ
+# =============================================================================
+
+# Размер QR-картинки (в пикселях) — соответствует box_size=10, border=4.
+QR_GENERATION_SIZE = 400
+
+# Error correction level: M — оптимально для сканирования с экрана.
+QR_ERROR_CORRECTION = qrcode.constants.ERROR_CORRECT_M
+
+
+@st.cache_data(ttl=IMAGE_CACHE_TTL, show_spinner=False)
+def generate_qr_png_bytes(qr_value: str) -> bytes | None:
+    """Генерирует PNG-байты QR-кода из значения колонки «QR код».
+
+    Собирает полный URL (QR_FORM_URL + qr_value) и генерирует QR.
+    Кешируется по значению qr_value — две позиции с одинаковым
+    значением получат один и тот же QR из кеша.
+    """
+    if not qr_value:
+        return None
+    if not QR_FORM_URL:
+        # URL формы не задан в .env — генерация невозможна.
+        return None
+
+    qr_value_clean = str(qr_value).strip()
+    if not qr_value_clean:
+        return None
+
+    full_url = f"{QR_FORM_URL}{qr_value_clean}"
+
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=QR_ERROR_CORRECTION,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(full_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        # Битое значение, слишком длинное, проблемы с кодировкой — вернём None,
+        # вьюха отрисует плейсхолдер.
+        return None
+
+
+def get_item_qr_bytes(code: str, qr_value: str) -> bytes | None:
+    """Высокоуровневый хелпер для вьюх.
+
+    Приоритет:
+      1. Файл <code>_qr.<ext> в IMAGES_DIR — если есть, используем его.
+      2. Генерация из qr_value — если файла нет, но есть значение.
+      3. Плейсхолдер no_photo.jpg — если ни файла, ни значения.
+    """
+    # 1. Файл
+    path = find_item_image(code, "qr")
+    if path is not None:
+        try:
+            return load_item_image_bytes(str(path), "qr", 0)
+        except Exception:
+            pass  # битый файл → пробуем генерацию
+
+    # 2. Генерация
+    if qr_value:
+        generated = generate_qr_png_bytes(str(qr_value))
+        if generated:
+            return generated
+
+    # 3. Плейсхолдер
     return get_placeholder_bytes(PHOTO_MAX_SIZE)

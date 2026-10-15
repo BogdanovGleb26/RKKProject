@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 import re
 from data_loader import load_data
-from utils import highlight_text, create_badge, get_item_image_bytes
+from utils import highlight_text, create_badge, get_item_image_bytes, get_item_qr_bytes
 import config
 
 
@@ -42,10 +42,10 @@ def render():
             help=f"Сбросить кэш и перечитать данные из источника ({source_label})",
         ):
             load_data.clear()
-            # ← сбрасываем и кеш картинок
-            from utils import load_item_image_bytes, get_placeholder_bytes
+            from utils import load_item_image_bytes, get_placeholder_bytes, generate_qr_png_bytes
             load_item_image_bytes.clear()
             get_placeholder_bytes.clear()
+            generate_qr_png_bytes.clear()
             st.toast(f"Кэш сброшен! Данные перечитаны ({source_label})", icon="🎉")
             st.rerun()
 
@@ -308,10 +308,12 @@ def render():
                             unsafe_allow_html=True,
                         )
                     
-                    # ← Картинки: фото предмета + QR-код
+                    # ← Картинки: фото + QR (с генерацией)
                     code_for_image = str(row.get("Код", "")).strip()
+                    qr_value_for_image = str(row.get("QR код", "")).strip()
+
                     photo_bytes = get_item_image_bytes(code_for_image, "photo")
-                    qr_bytes = get_item_image_bytes(code_for_image, "qr")
+                    qr_bytes = get_item_qr_bytes(code_for_image, qr_value_for_image)
 
                     st.divider()
 

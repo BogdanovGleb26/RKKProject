@@ -19,11 +19,16 @@ def load_and_check_config():
     if not images_dir.is_absolute():
         images_dir = Path(__file__).resolve().parent / images_dir
 
+    # ← НОВОЕ: базовый URL формы для генерации QR-кодов.
+    # Может быть пустым — тогда QR-генерация работать не будет,
+    # и в карточке покажется плейсхолдер.
+    qr_form_url = (os.getenv("QR_FORM_URL") or "").strip()
+
     if not TOKEN or not DISK_PATH or not LOCAL_FILE_PATH or DEFAULT_DATA_SOURCE not in ["yadisk", "local"]:
-        st.error("❌ Не найдены необходимые переменные в файле .env!")
+        st.error("❌ Не найдены переменные YANDEX_TOKEN или DISK_PATH в файле .env!")
         st.stop()
 
-    return TOKEN, DISK_PATH, LOCAL_FILE_PATH, DEFAULT_DATA_SOURCE, images_dir
+    return TOKEN, DISK_PATH, LOCAL_FILE_PATH, DEFAULT_DATA_SOURCE, images_dir, qr_form_url
 
 # Сразу экспортируем переменные для использования в других файлах
-TOKEN, DISK_PATH, LOCAL_FILE_PATH, DEFAULT_DATA_SOURCE, IMAGES_DIR = load_and_check_config()
+TOKEN, DISK_PATH, LOCAL_FILE_PATH, DEFAULT_DATA_SOURCE, IMAGES_DIR, QR_FORM_URL = load_and_check_config()
