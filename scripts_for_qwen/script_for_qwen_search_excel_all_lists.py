@@ -1,13 +1,24 @@
 import os
 import threading
+import time
 import pandas as pd
 from pydantic import BaseModel, Field
+
+# --- Windows-специфичные модули для shared-чтения ---
+try:
+    import win32file
+    import win32con
+    import msvcrt
+
+    _HAS_WIN32 = True
+except ImportError:
+    _HAS_WIN32 = False
 
 
 class Tools:
     class Valves(BaseModel):
         excel_path: str = Field(
-            default=r"C:\Users\user\Desktop\inventarization_data\test_reaL_data.xlsx",
+            default=r"C:\Users\user\Desktop\inventarization_data\test_real_data.xlsx",
             description="Путь к локальному Excel-файлу с учётными данными",
         )
         max_results: int = Field(
@@ -22,35 +33,82 @@ class Tools:
             default="Закупки,ОС Главная,Пластик",
             description="Список листов по умолчанию через запятую, если sheet_name='Все'",
         )
+        cache_ttl_sec: int = Field(
+            default=3,
+            description=(
+                "Сколько секунд считать кэш актуальным, даже если mtime не изменился. "
+                "Уменьшает частоту открытия файла и конфликты с Excel."
+            ),
+        )
 
     # ---------- кэш ----------
     _cache_lock = threading.Lock()
-    _cache = {"mtime": None, "excel_file": None, "sheets": None}
+    _cache = {"key": None, "data": None, "loaded_at": 0.0}
 
     def __init__(self):
         self.valves = self.Valves()
 
     # ---------- внутренние утилиты ----------
+    @staticmethod
+    def _open_shared(path: str):
+        """
+        Открывает файл на чтение, НЕ блокируя запись другим процессам (Windows).
+        Использует CreateFile с FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE.
+        Возвращает file-like объект в бинарном режиме.
+        """
+        if not _HAS_WIN32:
+            # Fallback для не-Windows: обычное чтение (там блокировок нет)
+            return open(path, "rb")
+
+        handle = win32file.CreateFile(
+            path,
+            win32con.GENERIC_READ,
+            win32con.FILE_SHARE_READ
+            | win32con.FILE_SHARE_WRITE
+            | win32con.FILE_SHARE_DELETE,
+            None,  # security attributes
+            win32con.OPEN_EXISTING,
+            win32con.FILE_ATTRIBUTE_NORMAL,
+            None,  # template
+        )
+        # Преобразуем Win32 HANDLE в обычный file descriptor, потом в file-like
+        fd = msvcrt.open_osfhandle(handle.Detach(), os.O_RDONLY)
+        return os.fdopen(fd, "rb")
+
     @classmethod
-    def _load_excel(cls, path: str):
-        """Читает ExcelFile с кэшем по mtime. Потокобезопасно."""
+    def _load_excel(cls, path: str, cache_ttl_sec: int) -> dict:
+        """
+        Возвращает {sheet_name: DataFrame}.
+        Оригинал открывается с share-флагами — Excel может его сохранять в это же время.
+        Кэш: по (mtime, size) + TTL, чтобы лишний раз не открывать файл.
+        """
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Файл не найден: {path}")
 
         mtime = os.path.getmtime(path)
-        with cls._cache_lock:
-            if cls._cache["mtime"] == mtime and cls._cache["excel_file"] is not None:
-                return cls._cache["excel_file"], cls._cache["sheets"]
-
-        excel_file = pd.ExcelFile(path)
-        sheets = excel_file.sheet_names
+        size = os.path.getsize(path)
+        key = (mtime, size)
+        now = time.time()
 
         with cls._cache_lock:
-            cls._cache["mtime"] = mtime
-            cls._cache["excel_file"] = excel_file
-            cls._cache["sheets"] = sheets
+            cache_ok = (
+                cls._cache["key"] == key
+                and cls._cache["data"] is not None
+                and (now - cls._cache["loaded_at"]) < cache_ttl_sec
+            )
+            if cache_ok:
+                return cls._cache["data"]
 
-        return excel_file, sheets
+        # Перечитываем. Открываем с share-флагами — Excel не блокируем.
+        with cls._open_shared(path) as f:
+            # pandas умеет читать .xlsx из file-like объекта через openpyxl
+            with pd.ExcelFile(f) as xls:
+                data = {s: xls.parse(s) for s in xls.sheet_names}
+
+        with cls._cache_lock:
+            cls._cache = {"key": key, "data": data, "loaded_at": time.time()}
+
+        return data
 
     @staticmethod
     def _truncate(df: pd.DataFrame, max_cell_len: int) -> pd.DataFrame:
@@ -76,7 +134,8 @@ class Tools:
         """
         try:
             excel_path = str(self.valves.excel_path)
-            excel_file, available_sheets = self._load_excel(excel_path)
+            sheets_data = self._load_excel(excel_path, int(self.valves.cache_ttl_sec))
+            available_sheets = list(sheets_data.keys())
 
             # --- какие листы обрабатываем ---
             if sheet_name and sheet_name != "Все" and sheet_name in available_sheets:
@@ -112,7 +171,7 @@ class Tools:
             all_results = []
 
             for sheet in target_sheets:
-                df = excel_file.parse(sheet_name=sheet)
+                df = sheets_data[sheet].copy()  # обязательно: fillna мутирует
                 if df.empty:
                     continue
 
@@ -176,9 +235,6 @@ class Tools:
         except FileNotFoundError as e:
             return f"Ошибка: {e}"
         except PermissionError:
-            return (
-                "Ошибка: нет доступа к файлу. Возможно, он открыт в Excel — "
-                "закройте его и повторите запрос."
-            )
+            return "Ошибка: нет доступа к файлу. Проверьте права на файл и папку."
         except Exception as e:
             return f"Ошибка выполнения поиска: {e}"
