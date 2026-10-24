@@ -9,3 +9,5 @@ pillow==12.3.0
 plotly==7.1.0
 qrcode==8.2
 pillow==12.3.0
+sqlalchemy==2.1.6
+psycopg2-binary==2.9.13

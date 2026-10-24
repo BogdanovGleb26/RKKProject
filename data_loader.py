@@ -14,14 +14,16 @@ from config import DEFAULT_DATA_SOURCE, DISK_PATH, LOCAL_FILE_PATH, TOKEN
 LOG_DIR = Path(__file__).resolve().parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
-logger = logging.getLogger("data_loader")
-if not logger.handlers:
+logger = logging.getLogger("app.data_loader")
+
+root_logger = logging.getLogger("app")
+if not root_logger.handlers:
     handler = logging.FileHandler(LOG_DIR / "app.log", encoding="utf-8")
     handler.setFormatter(logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     ))
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
+    root_logger.setLevel(logging.INFO)
 
 def _parse_and_prepare_df(
     excel_source, sheet_name: str, formatted_modified: str
