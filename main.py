@@ -94,7 +94,7 @@ st.sidebar.title("🎛️ Меню")
 
 app_mode = st.sidebar.radio(
     "Выберите раздел:",
-    options=["Поиск", "Аналитика", "Сканирование"],
+    options=["Поиск", "Аналитика", "Сканирование", "Администрирование"],
     index=0,
 )
 
@@ -165,19 +165,19 @@ if st.sidebar.button(
 
 st.sidebar.caption("© 2026 Инвентаризация v1.0.3")
 
-# --- DEBUG: проверка БД (временно) ---
-import config as _cfg
-from db import check_db_connection
-with st.sidebar:
-    st.caption("--- DEBUG DB ---")
-    _db_ok, _db_msg = check_db_connection()
-    if _db_ok:
-        st.success(f"✅ {_db_msg}")
-    else:
-        st.warning(f"⚠️ {_db_msg}")
-    st.caption(f"DB_ENABLED: {_cfg.DB_ENABLED}")
-    st.caption(f"DB_NAME: {_cfg.DB_NAME or '(пусто)'}")
-# --- /DEBUG ---
+# # --- DEBUG: проверка БД (временно) ---
+# import config as _cfg
+# from db import check_db_connection
+# with st.sidebar:
+#     st.caption("--- DEBUG DB ---")
+#     _db_ok, _db_msg = check_db_connection()
+#     if _db_ok:
+#         st.success(f"✅ {_db_msg}")
+#     else:
+#         st.warning(f"⚠️ {_db_msg}")
+#     st.caption(f"DB_ENABLED: {_cfg.DB_ENABLED}")
+#     st.caption(f"DB_NAME: {_cfg.DB_NAME or '(пусто)'}")
+# # --- /DEBUG ---
 
 # --- Маршрутизация (Роутинг) ---
 if app_mode == "Поиск":
@@ -186,3 +186,6 @@ elif app_mode == "Аналитика":
     analytics_view.render()
 elif app_mode == "Сканирование":
     scanning_view.render()
+elif app_mode == "Администрирование":
+    from views import admin_view
+    admin_view.render()
