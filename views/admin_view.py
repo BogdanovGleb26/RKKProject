@@ -121,13 +121,20 @@ def render():
                 "plastic_settings": "Настройки пластика",
             }.get(r.table, r.table)
 
+            skipped_part = f" (пропущено: {r.rows_skipped})" if r.rows_skipped else ""
             with st.expander(
                 f"{table_label}: {r.rows_inserted} / {r.rows_in_excel} строк"
+                + skipped_part
                 + (f" (ошибок: {r.rows_with_errors})" if r.rows_with_errors else ""),
                 expanded=(r.rows_with_errors > 0),
             ):
                 st.write(f"**В Excel:** {r.rows_in_excel}")
                 st.write(f"**Вставлено в БД:** {r.rows_inserted}")
+                if r.rows_skipped:
+                    st.info(
+                        f"**Пропущено:** {r.rows_skipped} строк(и) — "
+                        f"пустые заготовки без значения в колонке «Код»."
+                    )
                 if r.rows_with_errors:
                     st.warning(f"Строк с ошибками: {r.rows_with_errors} (значения → NULL)")
                 if r.missing_columns:

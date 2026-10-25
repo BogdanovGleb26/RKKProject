@@ -253,6 +253,7 @@ class ImportStats:
     table: str
     rows_in_excel: int = 0
     rows_inserted: int = 0
+    rows_skipped: int = 0       # ← новое: пропущено (нет кода / пустая строка)
     rows_with_errors: int = 0
     missing_columns: list[str] = field(default_factory=list)
     error_messages: list[str] = field(default_factory=list)
@@ -317,15 +318,25 @@ def _import_one_table(
     code_cols: set[str],
     percent_cols: set[str] = frozenset(),
 ) -> ImportStats:
-    """Импортирует один лист в одну таблицу. TRUNCATE + INSERT."""
+    """Импортирует один лист в одну таблицу. TRUNCATE + INSERT.
+
+    Особенности:
+    - Строки без значения в колонке «Код» пропускаются (rows_skipped).
+    - Каждый INSERT — в отдельной транзакции, чтобы ошибка одной строки
+      не откатывала все остальные.
+    """
     stats = ImportStats(table=table, rows_in_excel=len(df))
 
+    engine = get_engine()
+    if engine is None:
+        raise RuntimeError("PostgreSQL не сконфигурирован")
+
+    # TRUNCATE — всегда, даже если Excel пустой. В отдельной транзакции.
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE TABLE {table} RESTART IDENTITY"))
+
     if df.empty:
-        logger.warning("Лист для %r пуст — TRUNCATE без вставки", table)
-        # Всё равно очищаем таблицу
-        engine = get_engine()
-        with engine.begin() as conn:
-            conn.execute(text(f"TRUNCATE TABLE {table} RESTART IDENTITY"))
+        logger.warning("Лист для %r пуст — таблица очищена", table)
         return stats
 
     # Маппинг колонок
@@ -334,68 +345,74 @@ def _import_one_table(
     all_db_cols = set(mapping.keys())
     stats.missing_columns = sorted(all_db_cols - mapped_db_cols)
 
-    engine = get_engine()
-    if engine is None:
-        raise RuntimeError("PostgreSQL не сконфигурирован")
+    db_columns = list(col_map.keys())
+    placeholders = ", ".join(f":{c}" for c in db_columns)
+    insert_sql = text(
+        f"INSERT INTO {table} ({', '.join(db_columns)}) VALUES ({placeholders})"
+    )
 
     inserted = 0
+    skipped = 0
     errors = 0
 
-    with engine.begin() as conn:
-        # TRUNCATE
-        conn.execute(text(f"TRUNCATE TABLE {table} RESTART IDENTITY"))
+    for idx, row in df.iterrows():
+        # 1. Пропуск строк без «Кода» (пустые заготовки в Excel)
+        if "code" in col_map:
+            raw_code = row[col_map["code"]]
+            parsed_code = _parse_code(raw_code)
+            if not parsed_code:
+                skipped += 1
+                continue
 
-        # INSERT по одной строке (позволит отслеживать ошибки)
-        db_columns = list(col_map.keys())
-        placeholders = ", ".join(f":{c}" for c in db_columns)
-        insert_sql = text(
-            f"INSERT INTO {table} ({', '.join(db_columns)}) VALUES ({placeholders})"
-        )
+        # 2. Формируем params
+        params: dict[str, Any] = {}
+        has_error = False
+        for db_col in db_columns:
+            excel_col = col_map[db_col]
+            raw = row[excel_col]
 
-        for idx, row in df.iterrows():
-            params: dict[str, Any] = {}
-            has_error = False
-            for db_col in db_columns:
-                excel_col = col_map[db_col]
-                raw = row[excel_col]
+            if db_col in code_cols:
+                parsed = _parse_code(raw)
+            elif db_col in percent_cols:
+                parsed = _parse_percent(raw)
+            elif db_col in numeric_cols:
+                parsed = _parse_number(raw)
+                if raw is not None and not (isinstance(raw, float) and pd.isna(raw)):
+                    if str(raw).strip() and parsed is None:
+                        has_error = True
+            else:
+                parsed = _parse_text(raw)
 
-                if db_col in code_cols:
-                    parsed = _parse_code(raw)
-                elif db_col in percent_cols:
-                    parsed = _parse_percent(raw)
-                elif db_col in numeric_cols:
-                    parsed = _parse_number(raw)
-                elif db_col in numeric_cols:
-                    parsed = _parse_number(raw)
-                    if raw is not None and not (isinstance(raw, float) and pd.isna(raw)):
-                        if str(raw).strip() and parsed is None:
-                            has_error = True
-                            if len(stats.error_messages) < 5:
-                                stats.error_messages.append(
-                                    f"Строка {idx + 2}, поле «{db_col}»: "
-                                    f"не удалось распарсить {raw!r} → NULL"
-                                )
-                else:
-                    parsed = _parse_text(raw)
+            params[db_col] = parsed
 
-                params[db_col] = parsed
-
-            try:
+        # 3. INSERT в отдельной транзакции — ошибка не сломает остальные
+        try:
+            with engine.begin() as conn:
                 conn.execute(insert_sql, params)
-                inserted += 1
-                if has_error:
-                    errors += 1
-            except Exception as e:
+            inserted += 1
+            if has_error:
                 errors += 1
-                logger.exception("Ошибка INSERT в %r, строка %d", table, idx + 2)
                 if len(stats.error_messages) < 5:
-                    stats.error_messages.append(f"Строка {idx + 2}: {e}")
+                    stats.error_messages.append(
+                        f"Строка {idx + 2}: часть значений не распарсилась → NULL"
+                    )
+        except Exception as e:
+            errors += 1
+            logger.exception("Ошибка INSERT в %r, строка %d", table, idx + 2)
+            if len(stats.error_messages) < 5:
+                stats.error_messages.append(
+                    f"Строка {idx + 2}: {type(e).__name__}: {e}"
+                )
 
     stats.rows_inserted = inserted
+    stats.rows_skipped = skipped
     stats.rows_with_errors = errors
+
     logger.info(
-        "Импорт %r: в Excel %d, вставлено %d, с ошибками %d, отсутствуют колонки: %s",
-        table, stats.rows_in_excel, inserted, errors, stats.missing_columns,
+        "Импорт %r: в Excel %d, вставлено %d, пропущено %d, с ошибками %d, "
+        "отсутствуют колонки: %s",
+        table, stats.rows_in_excel, inserted, skipped, errors,
+        stats.missing_columns,
     )
     return stats
 
