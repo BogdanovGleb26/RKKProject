@@ -4,6 +4,7 @@ import re
 from data_loader import load_data
 from utils import highlight_text, create_badge, get_item_image_bytes, get_item_qr_bytes
 import config
+from db import get_sheet_df
 
 
 # Сколько результатов показывать на одной странице
@@ -52,11 +53,10 @@ def render():
     # Загрузка данных
     try:
         with st.spinner(f"Загрузка раздела «{selected_sheet}» из {source_label}..."):
-            # ← прокидываем source (сделано ранее)
-            df, last_updated = load_data(selected_sheet, source=source)
+            df, last_updated = get_sheet_df(selected_sheet, source=source)
             df_print_settings = pd.DataFrame()
             if selected_sheet == "Пластик":
-                df_print_settings, _ = load_data("Настройка печати", source=source)
+                df_print_settings, _ = get_sheet_df("Настройка печати", source=source)
     except Exception as e:
         st.error(f"Ошибка загрузки базы: {e}")
         st.stop()

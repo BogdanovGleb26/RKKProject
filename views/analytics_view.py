@@ -4,6 +4,7 @@ import streamlit as st
 import plotly.express as px
 from data_loader import load_data
 import config
+from db import get_sheet_df
 
 
 # =============================================================================
@@ -461,7 +462,7 @@ def render():
 
     try:
         with st.spinner(f"Загрузка данных раздела «{selected_sheet}» из {source_label}..."):
-            df, last_updated = load_data(selected_sheet, source=source)
+            df, last_updated = get_sheet_df(selected_sheet, source=source)
     except Exception as e:
         st.error(f"Ошибка при загрузке базы данных: {e}")
         st.stop()

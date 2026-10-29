@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 import config
-from data_loader import check_source, load_data
+from data_loader import check_source, load_data, SourceStatus
 from views import analytics_view, scanning_view, search_view
 
 
@@ -67,21 +67,31 @@ if "source_statuses" not in st.session_state:
 
 
 def refresh_source_statuses():
-    """Обновляет статусы обоих источников."""
-    st.session_state.source_statuses = {
+    """Обновляет статусы всех источников."""
+    statuses = {
         "yadisk": check_source("yadisk"),
         "local": check_source("local"),
     }
+    # PostgreSQL — только если сконфигурирован
+    if config.DB_ENABLED:
+        from db import check_db_connection
+        ok, msg = check_db_connection()
+        statuses["postgres"] = SourceStatus("postgres", ok, msg)
+    st.session_state.source_statuses = statuses
 
 
 def format_source_option(source: str) -> str:
     """Человекочитаемая метка для селекта с индикатором статуса."""
-    labels = {"yadisk": "Яндекс.Диск", "local": "Локальный ПК"}
+    labels = {
+        "yadisk": "Яндекс.Диск",
+        "local": "Локальный ПК",
+        "postgres": "PostgreSQL",
+    }
     status = st.session_state.source_statuses.get(source)
     if status is None:
-        return labels[source]
+        return labels.get(source, source)  # ← get на всякий случай
     icon = "✅" if status.available else "⚠️"
-    return f"{icon} {labels[source]}"
+    return f"{icon} {labels.get(source, source)}"
 
 
 # При первом запуске — проверим статусы
@@ -102,6 +112,8 @@ st.sidebar.divider()
 
 # 📁 Переключатель источника данных (динамический)
 source_options = {"yadisk": "Яндекс.Диск", "local": "Локальный ПК"}
+if config.DB_ENABLED:
+    source_options["postgres"] = "PostgreSQL"
 source_keys = list(source_options.keys())
 
 # Формируем лейблы с индикаторами
@@ -128,6 +140,8 @@ selected_source = next(
 # Смена источника — сбрасываем кеш данных
 if selected_source != st.session_state.data_source:
     load_data.clear()
+    from db import fetch_df
+    fetch_df.clear()  # ← сброс кеша БД
     st.session_state.data_source = selected_source
     st.rerun()
 
