@@ -104,7 +104,7 @@ st.sidebar.title("🎛️ Меню")
 
 app_mode = st.sidebar.radio(
     "Выберите раздел:",
-    options=["Поиск", "Аналитика", "Сканирование", "Администрирование"],
+    options=["Поиск", "Аналитика", "Сканирование", "Редактирование", "Администрирование"],
     index=0,
 )
 
@@ -160,6 +160,16 @@ if st.sidebar.button("🔄 Проверить источники", use_container
         refresh_source_statuses()
     st.rerun()
 
+# 👤 Текущий пользователь (только для редактирования)
+if st.session_state.get("user_name"):
+    col_user, col_btn = st.sidebar.columns([3, 1])
+    with col_user:
+        st.caption(f"👤 {st.session_state.user_name}")
+    with col_btn:
+        if st.button("✖", key="logout_user", help="Сменить пользователя"):
+            st.session_state.user_name = ""
+            st.rerun()
+
 st.sidebar.divider()
 
 # Кнопка QR-кода
@@ -176,6 +186,73 @@ if st.sidebar.button(
 #     "https://github.com/BogdanovGleb26/RKKProject",
 #     use_container_width=True,
 # )
+
+# # --- DEBUG: проверка CRUD-репозитория (временно) ---
+# with st.sidebar.expander("🔧 DEBUG CRUD", expanded=False):
+#     if st.button("Test create (procurement)", key="debug_create_procurement"):
+#         try:
+#             from repositories.procurement_repo import (
+#                 create_procurement, get_procurement_by_id, update_procurement,
+#                 delete_procurement,
+#             )
+#             new_id = create_procurement(
+#                 {"code": "TEST_PY_001", "nomenclature": "Из Python (DEBUG)", "status": "Тест"},
+#                 user="debug_user",
+#             )
+#             st.success(f"✅ create: id={new_id}")
+            
+#             item = get_procurement_by_id(new_id)
+#             st.write("**get by id:**")
+#             st.write({
+#                 "id": item.get("id"),
+#                 "code": item.get("code"),
+#                 "nomenclature": item.get("nomenclature"),
+#                 "row_version": item.get("row_version"),
+#                 "created_by": item.get("created_by"),
+#             })
+            
+#             ok, msg = update_procurement(
+#                 new_id,
+#                 {"nomenclature": "Обновлено из Python"},
+#                 expected_version=item.get("row_version"),
+#                 user="debug_user",
+#             )
+#             st.write(f"**update:** ok={ok}, msg={msg!r}")
+            
+#             item2 = get_procurement_by_id(new_id)
+#             st.write({
+#                 "nomenclature": item2.get("nomenclature"),
+#                 "row_version": item2.get("row_version"),
+#                 "updated_by": item2.get("updated_by"),
+#             })
+            
+#             # Конфликт версий: пробуем обновить с устаревшей version
+#             ok2, msg2 = update_procurement(
+#                 new_id,
+#                 {"nomenclature": "Конфликт"},
+#                 expected_version=item.get("row_version"),  # старая!
+#                 user="debug_user",
+#             )
+#             st.write(f"**update (конфликт):** ok={ok2}, msg={msg2!r}")
+            
+#             ok_del = delete_procurement(new_id, "debug_user")
+#             st.write(f"**delete:** ok={ok_del}")
+            
+#             item3 = get_procurement_by_id(new_id)
+#             st.write(f"**after delete:** item={item3}")
+            
+#         except Exception as e:
+#             st.error(f"{type(e).__name__}: {e}")
+#             import traceback
+#             st.code(traceback.format_exc())
+    
+#     if st.button("Очистить TEST_* из procurement", key="debug_clean_procurement"):
+#         from db import get_engine
+#         from sqlalchemy import text
+#         engine = get_engine()
+#         with engine.begin() as conn:
+#             res = conn.execute(text("DELETE FROM procurement WHERE code LIKE 'TEST_%'"))
+#             st.success(f"Удалено: {res.rowcount}")
 
 st.sidebar.caption("© 2026 Инвентаризация v1.0.3")
 
@@ -200,6 +277,9 @@ elif app_mode == "Аналитика":
     analytics_view.render()
 elif app_mode == "Сканирование":
     scanning_view.render()
+elif app_mode == "Редактирование":
+    from views import edit_view
+    edit_view.render()
 elif app_mode == "Администрирование":
     from views import admin_view
     admin_view.render()

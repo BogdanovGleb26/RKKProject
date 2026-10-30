@@ -43,6 +43,8 @@ def render():
             help=f"Сбросить кэш и перечитать данные из источника ({source_label})",
         ):
             load_data.clear()
+            from db import fetch_df
+            fetch_df.clear()  # ← сброс кеша PostgreSQL
             from utils import load_item_image_bytes, get_placeholder_bytes, generate_qr_png_bytes
             load_item_image_bytes.clear()
             get_placeholder_bytes.clear()
