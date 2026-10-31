@@ -4,6 +4,8 @@
 Используется со страницы «Редактирование» (edit_view.py).
 """
 
+import time
+
 import streamlit as st
 
 from db import fetch_df
@@ -164,9 +166,10 @@ def render_create_form(user: str) -> None:
 
         try:
             new_id = create_procurement(data, user)
-            st.success(f"Создано (id={new_id})")
+            st.success(f"✅ Создано (id={new_id})")
             fetch_df.clear()
             st.session_state.pop("edit_action", None)
+            time.sleep(1.5)
             st.rerun()
         except Exception as e:
             st.error(f"Ошибка создания: {e}")
@@ -218,9 +221,10 @@ def render_edit_form(item_id: int, user: str) -> None:
         try:
             ok, msg = update_procurement(item_id, data, expected_version, user)
             if ok:
-                st.success("Сохранено")
+                st.success("✅ Сохранено")
                 fetch_df.clear()
                 st.session_state.pop("edit_action", None)
+                time.sleep(1.5)
                 st.rerun()
             else:
                 st.error(msg)
@@ -254,9 +258,10 @@ def render_delete_confirm(item_id: int, user: str) -> None:
     with col_yes:
         if st.button("✅ Да, удалить", type="primary", width="stretch"):
             if delete_procurement(item_id, user):
-                st.success("Удалено")
+                st.success("✅ Удалено")
                 fetch_df.clear()
                 st.session_state.pop("edit_action", None)
+                time.sleep(1.5)
                 st.rerun()
             else:
                 st.error("Не удалось удалить (возможно, уже удалена).")
