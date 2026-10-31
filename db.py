@@ -271,8 +271,18 @@ def _get_sheet_from_db(sheet_name: str) -> tuple[pd.DataFrame, str]:
     ]
     df = df.drop(columns=[c for c in service_cols if c in df.columns])
 
-    # Заменяем NULL (NaN) на пустые строки — как в data_loader
-    df = df.fillna("")
+    # Числовые колонки — оставляем как есть (NaN = NULL).
+    # Все остальные — приводим к строке с "" вместо NaN.
+    numeric_cols = {
+        "id",
+        "price", "quantity", "amount", "final_price", "final_amount",
+        "remainder", "weight", "nozzle_temp", "bed_temp", "fan_speed",
+    }
+    for col in df.columns:
+        if col in numeric_cols:
+            continue
+        df[col] = df[col].fillna("").astype(str)
+
 
     # Формируем _search_corpus
     search_columns = [

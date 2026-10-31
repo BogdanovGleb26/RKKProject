@@ -455,7 +455,6 @@ def render():
     selected_sheet = st.segmented_control(
         "📄 Раздел для анализа:",
         options=SHEET_OPTIONS,
-        default=st.session_state.selected_sheet_analytics,
         key="selected_sheet_analytics",
         selection_mode="single",
     ) or SHEET_OPTIONS[0]

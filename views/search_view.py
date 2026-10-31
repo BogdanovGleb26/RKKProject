@@ -15,7 +15,12 @@ def render():
     st.title("📦 Поиск по складу")
 
     source = st.session_state.get("data_source", config.DEFAULT_DATA_SOURCE)
-    source_label = "Локальный ПК" if source == "local" else "Яндекс.Диск"
+    if source == "local":
+        source_label = "Локальный ПК"
+    elif source == "yandex":
+        source_label = "Яндекс.Диск"
+    else:
+        source_label = "PostgreSQL"
 
     # Список листов + ключ для сохранения выбора между вкладками
     SHEET_OPTIONS = ["Закупки", "ОС Главная", "Пластик"]
@@ -31,7 +36,6 @@ def render():
         selected_sheet = st.segmented_control(
             "📄 Раздел учета:",
             options=SHEET_OPTIONS,
-            default=st.session_state.selected_sheet_search,
             key="selected_sheet_search",
             selection_mode="single",
         ) or SHEET_OPTIONS[0]
