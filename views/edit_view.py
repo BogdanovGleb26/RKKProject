@@ -1,23 +1,44 @@
 """
-Страница «Редактирование» — CRUD для procurement.
+Страница «Редактирование» — CRUD для таблиц.
 
-Пока только для Закупок (пилот).
+Поддерживаемые таблицы: procurement (Закупки), os_main (ОС Главная).
 """
 
 import streamlit as st
 
 import config
 from db import get_sheet_df, fetch_df
-from views.crud_views import procurement_form
+from views.crud_views import procurement_form, os_main_form, plastic_form, plastic_settings_form
 
 
 PAGE_SIZE = 50
-SHEET = "Закупки"  # пилотная таблица
+
+# Маппинг: human label → (sheet_name, table_id, form_module)
+SHEET_OPTIONS = {
+    "Закупки": {
+        "sheet": "Закупки",
+        "table": "procurement",
+        "form": procurement_form,
+    },
+    "ОС Главная": {
+        "sheet": "ОС Главная",
+        "table": "os_main",
+        "form": os_main_form,
+    },
+    "Пластик": {
+        "sheet": "Пластик",
+        "table": "plastic_spools",
+        "form": plastic_form,
+    },
+    "Настройки пластика": {                    # ← НОВОЕ
+        "sheet": "Настройка печати",
+        "table": "plastic_settings",
+        "form": plastic_settings_form,
+    },
+}
 
 
 def _ensure_user_name() -> str | None:
-    """Проверяет, введено ли имя. Если нет — показывает форму ввода.
-    Возвращает имя или None (если не введено)."""
     if st.session_state.get("user_name"):
         return st.session_state.user_name
 
@@ -43,8 +64,7 @@ def _ensure_user_name() -> str | None:
     return None
 
 
-def _render_search_panel(df) -> None:
-    """Поле поиска + пагинация. Возвращает отфильтрованный df."""
+def _render_search_panel(df):
     st.caption("🔎 Поиск по позициям для редактирования")
     query = st.text_input(
         "Поиск",
@@ -88,9 +108,42 @@ def _render_search_panel(df) -> None:
     return filtered.iloc[start:end]
 
 
-def _render_item_card(row, idx: int) -> None:
-    """Одна карточка позиции с кнопками Редактировать / Удалить."""
+def _render_item_card(row, idx: int, table_id: str):
     item_id = row.get("id")
+
+    # Для справочника plastic_settings — своё отображение
+    if table_id == "plastic_settings":
+        plastic_type = str(row.get("Тип пластика", "")).strip() or "Без названия"
+        nozzle = str(row.get("Сопло (°C)", "")).strip() or "—"
+        bed = str(row.get("Стол (°C)", "")).strip() or "—"
+        fan = str(row.get("Обдув, %", "")).strip() or "—"
+
+        with st.container(border=True):
+            st.markdown(f"**{plastic_type}**")
+            st.caption(
+                f"🌡️ Сопло: {nozzle} · 🛏️ Стол: {bed} · 💨 Обдув: {fan}"
+            )
+
+            col_edit, col_del, col_space = st.columns([1, 1, 2])
+            with col_edit:
+                if st.button("✏️ Редактировать", key=f"edit_{table_id}_{item_id}", width="stretch"):
+                    st.session_state.edit_action = {
+                        "action": "edit",
+                        "item_id": item_id,
+                        "table": table_id,
+                    }
+                    st.rerun()
+            with col_del:
+                if st.button("🗑️ Удалить", key=f"del_{table_id}_{item_id}", width="stretch"):
+                    st.session_state.edit_action = {
+                        "action": "delete",
+                        "item_id": item_id,
+                        "table": table_id,
+                    }
+                    st.rerun()
+        return  # ← выходим, для остальных таблиц не рендерим
+
+    # Обычные таблицы (procurement, os_main, plastic_spools)
     code = str(row.get("Код", "")).strip()
     name = (
         str(row.get("Номенклатура", "")).strip()
@@ -111,86 +164,117 @@ def _render_item_card(row, idx: int) -> None:
 
         col_edit, col_del, col_space = st.columns([1, 1, 2])
         with col_edit:
-            if st.button(
-                "✏️ Редактировать",
-                key=f"edit_{item_id}",
-                width="stretch",
-            ):
-                st.session_state.edit_action = {"action": "edit", "item_id": item_id}
+            if st.button("✏️ Редактировать", key=f"edit_{table_id}_{item_id}", width="stretch"):
+                st.session_state.edit_action = {
+                    "action": "edit",
+                    "item_id": item_id,
+                    "table": table_id,
+                }
                 st.rerun()
         with col_del:
-            if st.button(
-                "🗑️ Удалить",
-                key=f"del_{item_id}",
-                width="stretch",
-            ):
-                st.session_state.edit_action = {"action": "delete", "item_id": item_id}
+            if st.button("🗑️ Удалить", key=f"del_{table_id}_{item_id}", width="stretch"):
+                st.session_state.edit_action = {
+                    "action": "delete",
+                    "item_id": item_id,
+                    "table": table_id,
+                }
                 st.rerun()
 
 
 def render():
     st.title("✏️ Редактирование")
-    st.caption("Пилот: редактирование доступно **только для листа «Закупки»**.")
 
-    # Проверяем доступ к БД
     if not config.DB_ENABLED:
-        st.error(
-            "❌ PostgreSQL не сконфигурирован. "
-            "Редактирование доступно только в режиме PostgreSQL."
-        )
+        st.error("❌ PostgreSQL не сконфигурирован.")
         return
 
     source = st.session_state.get("data_source", config.DEFAULT_DATA_SOURCE)
     if source != "postgres":
         st.warning(
             "⚠️ Редактирование доступно **только при источнике данных PostgreSQL**. "
-            f"Сейчас выбран: **{source}**. Переключите источник в сайдбаре."
+            f"Сейчас выбран: **{source}**."
         )
         return
 
-    # Проверяем имя
     user = _ensure_user_name()
     if user is None:
         return
 
-    # Если активно действие CRUD — рендерим соответствующую форму и выходим
+    # --- Выбор листа ---
+    if "edit_sheet" not in st.session_state:
+        st.session_state.edit_sheet = "Закупки"
+
+    selected_label = st.segmented_control(
+        "📄 Раздел для редактирования:",
+        options=list(SHEET_OPTIONS.keys()),
+        key="edit_sheet",
+        selection_mode="single",
+    ) or "Закупки"
+
+    config_for_sheet = SHEET_OPTIONS[selected_label]
+    sheet_name = config_for_sheet["sheet"]
+    table_id = config_for_sheet["table"]
+    form_module = config_for_sheet["form"]
+
+    # --- Активное действие (create / edit / delete) ---
     action = st.session_state.get("edit_action")
     if action:
+        # Проверка, что действие относится к текущей таблице
+        if action.get("table") and action["table"] != table_id:
+            # Таблица сменилась — сбрасываем действие
+            st.session_state.pop("edit_action", None)
+            st.rerun()
+
         if action["action"] == "create":
-            procurement_form.render_create_form(user)
+            form_module.render_create_form(user)
         elif action["action"] == "edit":
-            procurement_form.render_edit_form(action["item_id"], user)
+            form_module.render_edit_form(action["item_id"], user)
         elif action["action"] == "delete":
-            procurement_form.render_delete_confirm(action["item_id"], user)
+            form_module.render_delete_confirm(action["item_id"], user)
         return
 
-    # Основной экран: кнопка «Добавить» + поиск + список
-    col_add, col_space = st.columns([1, 3])
+    # --- Кнопки: Добавить + Обновить ---
+    col_add, col_refresh, col_space = st.columns([2, 1, 2])
     with col_add:
-        if st.button("➕ Добавить позицию", width="stretch", type="primary"):
-            st.session_state.edit_action = {"action": "create", "item_id": None}
+        if st.button("➕ Добавить позицию", width="stretch", type="primary", key="add_btn"):
+            st.session_state.edit_action = {
+                "action": "create",
+                "item_id": None,
+                "table": table_id,
+            }
+            st.rerun()
+    with col_refresh:
+        if st.button("🔄 Обновить", width="stretch",
+                     help="Перечитать данные из PostgreSQL (сброс кеша)"):
+            fetch_df.clear()
+            st.toast("Кэш сброшен! Данные перечитаны.", icon="🎉")
             st.rerun()
 
     st.divider()
 
-    # Загружаем данные
+    # --- Загрузка ---
     try:
-        with st.spinner("Загрузка из PostgreSQL..."):
-            df, last_updated = get_sheet_df(SHEET, source="postgres")
+        with st.spinner(f"Загрузка «{sheet_name}» из PostgreSQL..."):
+            df, last_updated = get_sheet_df(sheet_name, source="postgres")
     except Exception as e:
         st.error(f"Ошибка загрузки: {e}")
         return
 
     if df.empty:
-        st.info("В таблице пока нет позиций.")
+        st.info(f"В таблице «{sheet_name}» пока нет позиций.")
         return
 
     st.caption(f"🕒 Данные: **{last_updated}**")
 
-    page_df = _render_search_panel(df)
-    if page_df.empty:
-        st.warning("Ничего не найдено.")
-        return
+    if table_id == "plastic_settings":
+        # Справочник: без поиска и пагинации
+        page_df = df
+        st.caption(f"Всего записей: **{len(df)}**")
+    else:
+        page_df = _render_search_panel(df)
+        if page_df.empty:
+            st.warning("Ничего не найдено.")
+            return
 
     for idx, (_, row) in enumerate(page_df.iterrows()):
-        _render_item_card(row, idx)
+        _render_item_card(row, idx, table_id)

@@ -195,7 +195,11 @@ def render_edit_form(item_id: int, user: str) -> None:
         f"последнее изменение: {current.get('updated_by') or '—'}"
     )
 
-    expected_version = current.get("row_version", 1)
+    # ← Фиксируем expected_version при первом открытии формы
+    version_key = f"_edit_expected_version_{item_id}"
+    if version_key not in st.session_state:
+        st.session_state[version_key] = current.get("row_version", 1)
+    expected_version = st.session_state[version_key]
 
     with st.form(f"procurement_edit_form_{item_id}"):
         data = _render_form_fields(current, key_prefix=f"edit_{item_id}")
@@ -210,6 +214,7 @@ def render_edit_form(item_id: int, user: str) -> None:
             cancelled = st.form_submit_button("✖ Отмена", width="stretch")
 
     if cancelled:
+        st.session_state.pop(version_key, None)
         st.session_state.pop("edit_action", None)
         st.rerun()
 
@@ -223,6 +228,7 @@ def render_edit_form(item_id: int, user: str) -> None:
             if ok:
                 st.success("✅ Сохранено")
                 fetch_df.clear()
+                st.session_state.pop(version_key, None)
                 st.session_state.pop("edit_action", None)
                 time.sleep(1.5)
                 st.rerun()

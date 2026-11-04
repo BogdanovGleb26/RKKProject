@@ -445,19 +445,30 @@ def render():
     st.title("📊 Отчеты")
 
     source = st.session_state.get("data_source", config.DEFAULT_DATA_SOURCE)
-    source_label = "Локальный ПК" if source == "local" else "Яндекс.Диск"
+    source_label = "Локальный ПК" if source == "local" else ("Яндекс.Диск" if source == "yadisk" else "PostgreSQL")
 
     SHEET_OPTIONS = ["Закупки", "ОС Главная", "Пластик"]
 
     if "selected_sheet_analytics" not in st.session_state:
         st.session_state.selected_sheet_analytics = SHEET_OPTIONS[0]
 
-    selected_sheet = st.segmented_control(
-        "📄 Раздел для анализа:",
-        options=SHEET_OPTIONS,
-        key="selected_sheet_analytics",
-        selection_mode="single",
-    ) or SHEET_OPTIONS[0]
+    col_sheet, col_btn = st.columns([4, 1], vertical_alignment="bottom")
+    with col_sheet:
+        selected_sheet = st.segmented_control(
+            "📄 Раздел для анализа:",
+            options=SHEET_OPTIONS,
+            key="selected_sheet_analytics",
+            selection_mode="single",
+        ) or SHEET_OPTIONS[0]
+    with col_btn:
+        if st.button("🔄 Обновить", width="stretch",
+                     help=f"Сбросить кэш и перечитать данные ({source_label})"):
+            from data_loader import load_data
+            from db import fetch_df
+            load_data.clear()
+            fetch_df.clear()
+            st.toast("Кэш сброшен! Данные перечитаны.", icon="🎉")
+            st.rerun()
 
     try:
         with st.spinner(f"Загрузка данных раздела «{selected_sheet}» из {source_label}..."):
