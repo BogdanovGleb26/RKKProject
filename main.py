@@ -254,7 +254,7 @@ if st.sidebar.button(
 #             res = conn.execute(text("DELETE FROM procurement WHERE code LIKE 'TEST_%'"))
 #             st.success(f"Удалено: {res.rowcount}")
 
-st.sidebar.caption("© 2026 Инвентаризация v1.0.3")
+st.sidebar.caption("© 2026 Инвентаризация v2.0.0")
 
 # # --- DEBUG: проверка БД (временно) ---
 # import config as _cfg

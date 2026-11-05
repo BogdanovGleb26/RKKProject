@@ -188,8 +188,8 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TABLE plastic_settings (
     id              BIGSERIAL PRIMARY KEY,
     plastic_type    TEXT NOT NULL UNIQUE,
-    nozzle_temp     NUMERIC(5,0),
-    bed_temp        NUMERIC(5,0),
-    fan_speed       NUMERIC(5,0),
+    nozzle_temp     TEXT,
+    bed_temp        TEXT,
+    fan_speed       TEXT,
     notes           TEXT
 );
