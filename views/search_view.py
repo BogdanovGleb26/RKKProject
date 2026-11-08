@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 import re
 from data_loader import load_data
-from utils import highlight_text, create_badge, get_item_image_bytes, get_item_qr_bytes
+from utils import highlight_text, create_badge, get_item_image_bytes, get_item_qr_bytes, item_has_photo
 import config
 from db import get_sheet_df
 
@@ -53,6 +53,7 @@ def render():
             load_item_image_bytes.clear()
             get_placeholder_bytes.clear()
             generate_qr_png_bytes.clear()
+            item_has_photo.clear() 
             st.toast(f"Кэш сброшен! Данные перечитаны ({source_label})", icon="🎉")
             st.rerun()
 
@@ -272,6 +273,9 @@ def render():
 
                 loc_tag = f"✅ [{storage}]" if storage else "❓ [Без локации]"
 
+                # ← НОВОЕ: индикатор фото
+                photo_icon = "📷" if item_has_photo(code) else "🚫"
+
                 extra_info = []
                 if plastic_type:
                     extra_info.append(plastic_type)
@@ -279,7 +283,7 @@ def render():
                     extra_info.append(plastic_color)
                 extra_suffix = f" | {' '.join(extra_info)}" if extra_info else ""
 
-                expander_title = f"{loc_tag} {name} | Код: {code}{extra_suffix}"
+                expander_title = f"{loc_tag} {photo_icon} {name} | Код: {code}{extra_suffix}"
 
                 with st.expander(expander_title):
                     col1, col2 = st.columns(2)

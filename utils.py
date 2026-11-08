@@ -296,3 +296,10 @@ def get_item_qr_bytes(code: str, qr_value: str) -> bytes | None:
 
     # 3. Плейсхолдер
     return get_placeholder_bytes(PHOTO_MAX_SIZE)
+
+@st.cache_data(ttl=300, show_spinner=False)
+def item_has_photo(code: str) -> bool:
+    """Проверяет, есть ли реальное фото (не заглушка) для позиции."""
+    if not code:
+        return False
+    return find_item_image(code, "photo") is not None
