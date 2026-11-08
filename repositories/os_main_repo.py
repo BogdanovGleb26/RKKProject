@@ -10,6 +10,8 @@ from sqlalchemy import text
 
 from db import get_engine
 
+from auth import require_role
+
 logger = logging.getLogger("app.repo.os_main")
 
 
@@ -74,6 +76,7 @@ def get_os_main_by_id(item_id: int) -> Optional[dict]:
 # =============================================================================
 
 def create_os_main(data: dict[str, Any], user: str) -> int:
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
@@ -111,6 +114,7 @@ def update_os_main(
     expected_version: int,
     user: str,
 ) -> tuple[bool, str]:
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
@@ -160,6 +164,7 @@ def update_os_main(
 # =============================================================================
 
 def delete_os_main(item_id: int, user: str) -> bool:
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")

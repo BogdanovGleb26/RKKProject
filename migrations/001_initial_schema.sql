@@ -194,6 +194,8 @@ CREATE TABLE plastic_settings (
     notes           TEXT
 );
 
+--- Фикс для обновления updated_at и row_version при UPDATE
+
 -- 1. Удаляем старый триггер
 DROP TRIGGER IF EXISTS trg_procurement_updated_at ON procurement;
 DROP TRIGGER IF EXISTS trg_os_main_updated_at ON os_main;
@@ -221,3 +223,22 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
 CREATE TRIGGER trg_plastic_updated_at_and_version
 BEFORE UPDATE ON plastic_spools
 FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
+
+-- Таблица пользователей для аутентификации и авторизации
+
+CREATE TABLE IF NOT EXISTS users (
+    id BIGSERIAL PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer'
+        CHECK (role IN ('admin', 'editor', 'viewer')),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
+
+SELECT table_name FROM information_schema.tables 
+WHERE table_schema = 'public' AND table_name = 'users';

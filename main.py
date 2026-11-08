@@ -14,6 +14,25 @@ import config
 from data_loader import check_source, load_data, SourceStatus
 from views import analytics_view, scanning_view, search_view
 
+from auth import ensure_admin_exists
+ensure_admin_exists()
+
+if "current_user" not in st.session_state:
+    from views import login_view
+    login_view.render()
+    st.stop()
+
+current_user = st.session_state.current_user
+
+# =============================================================================
+# Проверка входа
+# =============================================================================
+if "current_user" not in st.session_state:
+    from views import login_view
+    login_view.render()
+    st.stop()
+
+current_user = st.session_state.current_user
 
 # --- Вспомогательные функции ---
 def get_local_ip() -> str:
@@ -98,14 +117,34 @@ def format_source_option(source: str) -> str:
 if not st.session_state.source_statuses:
     refresh_source_statuses()
 
+# Роль текущего пользователя
+user_role = current_user["role"]
+role_labels = {
+    "admin": "Администратор",
+    "editor": "Редактор",
+    "viewer": "Наблюдатель",
+}
 
 # --- Боковое меню (Сайдбар) ---
 st.sidebar.title("🎛️ Меню")
 
+# Роли и доступные режимы
+user_role = current_user["role"]  # из проверки входа
+
+modes = ["Поиск", "Аналитика", "Сканирование"]
+if user_role in ("editor", "admin"):
+    modes.append("Редактирование")
+if user_role == "admin":
+    modes.append("Администрирование")
+
+# Если текущий режим недоступен для роли — сбрасываем на "Поиск"
+if st.session_state.get("app_mode") and st.session_state.app_mode not in modes:
+    st.session_state.app_mode = "Поиск"
+
 app_mode = st.sidebar.radio(
     "Выберите раздел:",
-    options=["Поиск", "Аналитика", "Сканирование", "Редактирование", "Администрирование"],
-    index=0,
+    options=modes,
+    key="app_mode",
 )
 
 st.sidebar.divider()
@@ -187,9 +226,27 @@ if st.sidebar.button(
 #     use_container_width=True,
 # )
 
+
+st.sidebar.divider()
+
+st.sidebar.caption(
+    f"👤 **{current_user['username']}** · "
+    f"{role_labels.get(user_role, user_role)}"
+)
+
+if st.sidebar.button("🚪 Выйти", use_container_width=True, key="logout_btn"):
+    st.session_state.pop("current_user", None)
+    st.session_state.pop("audit_name", None)
+    st.session_state.pop("app_mode", None)
+    st.session_state.pop("edit_action", None)
+    st.session_state.pop("selected_sheet_search", None)
+    st.session_state.pop("selected_sheet_analytics", None)
+    st.session_state.pop("edit_sheet", None)
+    st.rerun()
+
 st.sidebar.caption("© 2026 Инвентаризация v2.0.0")
 
-# --- Маршрутизация (Роутинг) ---
+# --- Маршрутизация с защитой по роли ---
 if app_mode == "Поиск":
     search_view.render()
 elif app_mode == "Аналитика":
@@ -197,8 +254,14 @@ elif app_mode == "Аналитика":
 elif app_mode == "Сканирование":
     scanning_view.render()
 elif app_mode == "Редактирование":
+    if user_role not in ("editor", "admin"):
+        st.error("⛔ Недостаточно прав для доступа к этому разделу.")
+        st.stop()
     from views import edit_view
     edit_view.render()
 elif app_mode == "Администрирование":
+    if user_role != "admin":
+        st.error("⛔ Недостаточно прав для доступа к этому разделу.")
+        st.stop()
     from views import admin_view
     admin_view.render()

@@ -11,3 +11,4 @@ qrcode==8.2
 pillow==12.3.0
 sqlalchemy==2.1.6
 psycopg2-binary==2.9.13
+argon2-cffi==25.1.0

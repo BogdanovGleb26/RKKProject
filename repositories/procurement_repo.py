@@ -12,6 +12,8 @@ from sqlalchemy import text
 
 from db import get_engine
 
+from auth import require_role
+
 logger = logging.getLogger("app.repo.procurement")
 
 
@@ -86,6 +88,7 @@ def create_procurement(data: dict[str, Any], user: str) -> int:
                  Пустые значения (None, "") — сохраняются как NULL.
     :param user: имя пользователя (created_by / updated_by)
     """
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
@@ -128,6 +131,7 @@ def update_procurement(
     :param expected_version: текущая row_version (для проверки конфликта)
     :return: (ok, message)
     """
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
@@ -179,6 +183,7 @@ def update_procurement(
 
 def delete_procurement(item_id: int, user: str) -> bool:
     """Мягкое удаление: is_deleted = TRUE. Возвращает True если запись обновлена."""
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")

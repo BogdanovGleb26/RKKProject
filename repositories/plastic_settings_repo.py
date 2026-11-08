@@ -16,6 +16,8 @@ from sqlalchemy.exc import IntegrityError
 
 from db import get_engine
 
+from auth import require_role
+
 logger = logging.getLogger("app.repo.plastic_settings")
 
 
@@ -58,6 +60,7 @@ def get_plastic_settings_by_id(item_id: int) -> Optional[dict]:
 
 def create_plastic_settings(data: dict[str, Any], user: str) -> int:
     """user игнорируется (справочник без аудита)."""
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
@@ -103,6 +106,7 @@ def update_plastic_settings(
 ) -> tuple[bool, str]:
     """Обновление без оптимистичной блокировки.
     user игнорируется (справочник без аудита)."""
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
@@ -142,6 +146,7 @@ def update_plastic_settings(
 # =============================================================================
 
 def delete_plastic_settings(item_id: int) -> bool:
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")

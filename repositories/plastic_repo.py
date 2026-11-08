@@ -9,6 +9,8 @@ from sqlalchemy import text
 
 from db import get_engine
 
+from auth import require_role
+
 logger = logging.getLogger("app.repo.plastic")
 
 
@@ -52,6 +54,7 @@ def get_plastic_by_id(item_id: int) -> Optional[dict]:
 # =============================================================================
 
 def create_plastic(data: dict[str, Any], user: str) -> int:
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
@@ -89,6 +92,7 @@ def update_plastic(
     expected_version: int,
     user: str,
 ) -> tuple[bool, str]:
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
@@ -138,6 +142,7 @@ def update_plastic(
 # =============================================================================
 
 def delete_plastic(item_id: int, user: str) -> bool:
+    require_role("editor")
     engine = get_engine()
     if engine is None:
         raise RuntimeError("PostgreSQL не сконфигурирован")
