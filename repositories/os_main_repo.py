@@ -120,8 +120,6 @@ def update_os_main(
         return False, "Нет полей для обновления"
 
     set_parts = [f"{c} = :{c}" for c in cols]
-    set_parts.append("row_version = row_version + 1")
-    set_parts.append("updated_at = NOW()")
     set_parts.append("updated_by = :updated_by")
 
     sql = text(f"""
@@ -172,8 +170,7 @@ def delete_os_main(item_id: int, user: str) -> bool:
                 UPDATE os_main
                 SET is_deleted = TRUE,
                     deleted_at = NOW(),
-                    deleted_by = :user,
-                    row_version = row_version + 1
+                    deleted_by = :user
                 WHERE id = :id AND is_deleted = FALSE
             """),
             {"id": item_id, "user": user},

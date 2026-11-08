@@ -193,3 +193,31 @@ CREATE TABLE plastic_settings (
     fan_speed       TEXT,
     notes           TEXT
 );
+
+-- 1. Удаляем старый триггер
+DROP TRIGGER IF EXISTS trg_procurement_updated_at ON procurement;
+DROP TRIGGER IF EXISTS trg_os_main_updated_at ON os_main;
+DROP TRIGGER IF EXISTS trg_plastic_updated_at ON plastic_spools;
+
+-- 2. Обновляем функцию
+CREATE OR REPLACE FUNCTION set_updated_at_and_version()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    NEW.row_version = COALESCE(OLD.row_version, 0) + 1;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 3. Создаём новые триггеры
+CREATE TRIGGER trg_procurement_updated_at_and_version
+BEFORE UPDATE ON procurement
+FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
+
+CREATE TRIGGER trg_os_main_updated_at_and_version
+BEFORE UPDATE ON os_main
+FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
+
+CREATE TRIGGER trg_plastic_updated_at_and_version
+BEFORE UPDATE ON plastic_spools
+FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
