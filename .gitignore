@@ -1,14 +1,95 @@
+# ===== Python =====
 __pycache__/
-.ipynb_checkpoints/
-*.env
-.vscode/
-venv/
-logs/
-.logs/
-images/
-.venv/
-save_changes_before_promt.py
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
 
+# ===== Virtualenv =====
+venv/
+.venv/
+env/
+ENV/
+
+# ===== Secrets & local config =====
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*.pem
+*.key
+*.p12
+*.pfx
+pgpass.conf
+.pgpass
+local.bat
+local.ps1
+*.local
+
+# ===== Logs =====
+*.log
+logs/
+*.log.*
+
+# ===== DB dumps & backups =====
+*.dump
+*.backup
+*.sql
+*.sql.gz
+backups/
+
+# ===== Data / uploads / exports =====
+data/
+uploads/
+exports/
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# ===== Excel (данные; шаблоны — исключением ниже) =====
 *.xlsx
 *.xls
 *.xlsm
+!templates/*.xlsx
+!templates/*.xls
+
+# ===== Jupyter =====
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ===== Caches / tools =====
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# ===== Build artifacts =====
+*.exe
+*.msi
+*.spec
+
+# ===== IDE / OS =====
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Ваши личные =====
+save_changes_before_promt.py
+images/
