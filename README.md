@@ -59,7 +59,8 @@
 разные десятичные разделители — `1,234.56` и `1.234,56`), а также показывает
 предупреждение, если часть значений не удалось распарсить.
 
-### 3. 📷 Сканер QR-кодов
+### 3. 📷 Сканер QR-кодов и карточка предмета
+
 - **Загрузка и камера:** файл с телефона/ПК (поддерживается multi-upload) или
   снимок напрямую с веб-камеры.
 - **Многоэтапное распознавание (OpenCV):** предобработка кадра (grayscale,
@@ -67,8 +68,22 @@
   тусклых QR-кодов.
 - **Авто-ресайз:** большие фото автоматически уменьшаются для быстрого
   отображения и распознавания на мобильных устройствах.
-- **Быстрый переход:** распознавание прямых веб-ссылок с кнопкой мгновенного
-  перехода.
+- **Карточка предмета по QR:** после распознавания приложение **извлекает
+  `QR код`** из ссылки Google Forms (или из голого текста) и **находит
+  предмет** в текущем источнике данных (Excel или PostgreSQL).
+  - Если найден **один предмет** — показывается **карточка**:
+    **место хранения**, **статус**, **проект**, **куратор**, **фото**, **QR**,
+    expander «Все поля».
+  - Если **несколько** — **список** с **пометкой таблицы** (Закупки / ОС / Пластик).
+  - Если **ничего** — предложение **перейти в «Поиск»** по другим параметрам.
+- **Встроенное редактирование:** прямо из карточки можно **открыть форму
+  редактирования** (доступно только `editor`/`admin` и только при источнике
+  `PostgreSQL`).
+- **Прямые ссылки:** если распознанный текст — URL, но не удалось извлечь
+  `qr_code`, показывается **кнопка «🌐 Перейти по ссылке»**.
+
+> 💡 **QR-коды не нужно перегенерировать** — приложение **работает с текущими**
+> наклейками (Google Forms), извлекая код из параметра `entry.<id>=<qr_code>`.
 
 ### 4. 📁 Выбор источника данных
 - Динамический селект в сайдбаре: **Яндекс.Диск**, **Локальный ПК**,
@@ -144,6 +159,43 @@
 - **Аудит** — псевдо-аудит через **«Представьтесь»** (при первом заходе
   в «Редактирование»). Имя сохраняется в `created_by` / `updated_by`.
 
+**Аварийный вход (если PostgreSQL недоступен):**
+- При **недоступности PostgreSQL** обычный вход **не работает**.
+- Доступен **аварийный вход** через учётные данные из `.env`:
+  - `FALLBACK_ADMIN_USERNAME` / `FALLBACK_ADMIN_PASSWORD` — роль `admin` (только
+    просмотр Excel-источников, **без CRUD/админки**).
+  - `FALLBACK_VIEWER_USERNAME` / `FALLBACK_VIEWER_PASSWORD` — роль `viewer`.
+- Аварийный вход **активен только при БД-офф** (когда обычные логины не работают).
+- После аварийного входа **источник форсируется на «Локальный ПК»**;
+  доступны **Поиск / Аналитика / Сканирование / Экспорт**.
+
+### 8. 📤 Экспорт в Excel
+
+Раздел «Экспорт» **доступен всем ролям** (включая `viewer` и fallback-режим).
+Позволяет скачать **текущие данные** в формате `.xlsx` — **как исходный
+Excel-файл**, чтобы версии в Excel и в приложении сходились.
+
+- **4 листа:** Закупки, ОС Главная, Пластик, Настройка печати.
+- **Русские имена** колонок и **порядок** — **точно как в исходном реестре**
+  (включая столбец `№` для Закупок/ОС/Пластика; в «Настройке печати» `№` нет).
+- **Служебные колонки** (`id`, `row_version`, `is_deleted`, `created_at`,
+  `photo_path`, `_search_corpus` и т. п.) — **не экспортируются**.
+- **Soft-deleted** записи — **не экспортируются**, но показывается их
+  количество.
+- **Источник данных** — **текущий** в сайдбаре (`local` / `yadisk` / `postgres`).
+- **Имя файла:** `inventarization_YYYY-MM-DD_HH-MM.xlsx`.
+- **5-й лист `_mapping`** — сопоставление колонок БД ↔ Excel.
+
+**На странице экспорта:**
+- Статистика по **количеству строк** каждой таблицы.
+- **Дата последнего обновления** данных.
+- **Счётчик удалённых** записей (не экспортируются).
+- **Таблица сопоставления колонок**:
+  - ✅ — экспортируется.
+  - 🚫 — служебная (не экспортируется).
+  - ❓ — нет в текущих данных.
+- **Порядок:** «📄 Сформировать Excel» → «📥 Скачать Excel».
+
 ---
 
 ## 🛠️ Стек технологий
@@ -179,14 +231,18 @@
 │ └── os_main_repo.py
 │ └── plastic_repo.py
 │ └── plastic_settings_repo.py
+│ └── item_search.py        # поиск по qr_code (все источники)
+│ └── excel_exporter.py     # экспорт в .xlsx
 ├── migrations/ # SQL-скрипты
 │ └── 001_initial_schema.sql # Схема БД
 ├── views/ # Экраны приложения
-│ ├── login_view.py # Страница входа
+│ ├── login_view.py # Страница входа (с проверкой БД)
 │ ├── search_view.py # Поиск
 │ ├── analytics_view.py # Аналитика
-│ ├── scanning_view.py # Сканер QR
+│ ├── scanning_view.py # Сканер QR → карточка → редактирование
+│ ├── item_card.py # Карточка предмета (для сканера)
 │ ├── edit_view.py # Страница «Редактирование»
+│ ├── export_view.py # Экспорт в Excel
 │ ├── admin_view.py # Страница «Администрирование» (импорт + пользователи)
 │ └── crud_views/
 │     └── procurement_form.py # Формы CRUD для procurement
@@ -235,6 +291,13 @@ DB_NAME=rkk_warehouse
 DB_USER=warehouse_app
 DB_PASSWORD=your_password_here
 
+# --- Аварийный вход (если PostgreSQL недоступен) ---
+FALLBACK_ADMIN_USERNAME=fallback_admin
+FALLBACK_ADMIN_PASSWORD=CHANGE_ME_STRONG_PASSWORD_ADMIN
+
+FALLBACK_VIEWER_USERNAME=fallback_viewer
+FALLBACK_VIEWER_PASSWORD=CHANGE_ME_STRONG_PASSWORD_VIEWER
+
 ```
 
 Пример корректного файла `.env.example`:
@@ -263,6 +326,13 @@ DB_PORT=5432
 DB_NAME=rkk_warehouse
 DB_USER=warehouse_app
 DB_PASSWORD=your_password_here
+
+# --- Аварийный вход (если PostgreSQL недоступен) ---
+FALLBACK_ADMIN_USERNAME=fallback_admin
+FALLBACK_ADMIN_PASSWORD=CHANGE_ME_STRONG_PASSWORD_ADMIN
+
+FALLBACK_VIEWER_USERNAME=fallback_viewer
+FALLBACK_VIEWER_PASSWORD=CHANGE_ME_STRONG_PASSWORD_VIEWER
 
 ```
 
@@ -441,6 +511,26 @@ QR_FORM_URL=https://docs.google.com/forms/d/e/1FAIpQLSd6.../viewform?usp=pp_url&
 (через DBeaver: откройте файл, выделите всё, Alt+X).
 
 5. Заполните DB_* в .env (см. раздел «Подготовка»).
+
+6. **Таблица `users`** — создаётся отдельно (см. SQL в разделе
+   [«Перенос на прод»](#-перенос-на-прод) или примените:
+
+   ```sql
+   CREATE TABLE IF NOT EXISTS users (
+       id BIGSERIAL PRIMARY KEY,
+       username TEXT UNIQUE NOT NULL,
+       password_hash TEXT NOT NULL,
+       role TEXT NOT NULL DEFAULT 'viewer'
+           CHECK (role IN ('admin', 'editor', 'viewer')),
+       is_active BOOLEAN NOT NULL DEFAULT TRUE,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   );
+   CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+   CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
+
+7. Первый запуск — приложение автоматически создаст админа
+(admin / admin123). Смените пароль после первого входа.
 
 ### Импорт из Excel
 
