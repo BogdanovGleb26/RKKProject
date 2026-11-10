@@ -7,10 +7,12 @@
 
 import logging
 from typing import Optional
+import config
 
 import streamlit as st
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHash
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
 
 from db import get_engine
@@ -203,21 +205,76 @@ def update_role(user_id: int, new_role: str) -> bool:
 def authenticate(username: str, password: str) -> tuple[Optional[dict], str]:
     """Проверяет логин/пароль.
 
+    1. Если БД недоступна — проверяет fallback-креды (из .env).
+    2. Иначе — стандартная проверка через users в БД.
+
     Возвращает (user_dict | None, error_message).
-    user_dict: {id, username, role} — БЕЗ password_hash.
     """
     if not username or not password:
         return None, "Введите логин и пароль"
 
-    user = get_user_by_username(username.strip())
+    username_clean = username.strip()
+    password_clean = password.strip()
+
+    # --- Определяем, доступна ли БД ---
+    db_available = False
+    try:
+        engine = get_engine()
+        if engine is not None:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            db_available = True
+    except Exception:
+        logger.warning("authenticate: БД недоступна, проверяю fallback")
+
+    # --- Fallback (только когда БД недоступна) ---
+    if not db_available:
+        # Admin
+        if (config.FALLBACK_ADMIN_USERNAME
+                and config.FALLBACK_ADMIN_PASSWORD
+                and username_clean == config.FALLBACK_ADMIN_USERNAME
+                and password_clean == config.FALLBACK_ADMIN_PASSWORD):
+            logger.warning(
+                "authenticate: АВАРИЙНЫЙ ВХОД admin (username=%r, БД недоступна)",
+                username_clean,
+            )
+            return {
+                "id": -1,
+                "username": config.FALLBACK_ADMIN_USERNAME,
+                "role": "admin",
+                "is_fallback": True,
+            }, ""
+
+        # Viewer
+        if (config.FALLBACK_VIEWER_USERNAME
+                and config.FALLBACK_VIEWER_PASSWORD
+                and username_clean == config.FALLBACK_VIEWER_USERNAME
+                and password_clean == config.FALLBACK_VIEWER_PASSWORD):
+            logger.warning(
+                "authenticate: АВАРИЙНЫЙ ВХОД viewer (username=%r, БД недоступна)",
+                username_clean,
+            )
+            return {
+                "id": -2,
+                "username": config.FALLBACK_VIEWER_USERNAME,
+                "role": "viewer",
+                "is_fallback": True,
+            }, ""
+
+        return None, (
+            "PostgreSQL недоступен. Используйте аварийный вход "
+            "(учётные данные у администратора) или обратитесь к админу."
+        )
+
+    # --- Стандартная аутентификация через БД ---
+    user = get_user_by_username(username_clean)
     if user is None:
-        # Намеренно одинаковое сообщение — не даём понять, существует ли логин
         return None, "Неверный логин или пароль"
 
     if not user["is_active"]:
         return None, "Учётная запись заблокирована"
 
-    if not verify_password(password, user["password_hash"]):
+    if not verify_password(password_clean, user["password_hash"]):
         return None, "Неверный логин или пароль"
 
     logger.info("authenticate: успешный вход username=%r", user["username"])
@@ -235,6 +292,7 @@ def authenticate(username: str, password: str) -> tuple[Optional[dict], str]:
 # Первый админ
 # =============================================================================
 
+@st.cache_resource(show_spinner=False)
 def ensure_admin_exists() -> None:
     """Если в users нет ни одного админа — создаёт admin / admin123."""
     engine = get_engine()
@@ -260,6 +318,11 @@ def ensure_admin_exists() -> None:
                     "Создан первый админ: admin / admin123. "
                     "Смените пароль после первого входа!"
                 )
+    except OperationalError:
+        # БД недоступна — это нормально (приложение работает в fallback-режиме)
+        logger.warning(
+            "ensure_admin_exists: БД недоступна, проверка/создание админа пропущены"
+        )
     except Exception:
         # Таблица users ещё не создана (миграция не применена) — не падаем
         logger.exception("ensure_admin_exists: не удалось проверить/создать админа")

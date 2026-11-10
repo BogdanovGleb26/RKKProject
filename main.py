@@ -17,13 +17,6 @@ from views import analytics_view, scanning_view, search_view
 from auth import ensure_admin_exists
 ensure_admin_exists()
 
-if "current_user" not in st.session_state:
-    from views import login_view
-    login_view.render()
-    st.stop()
-
-current_user = st.session_state.current_user
-
 # =============================================================================
 # Проверка входа
 # =============================================================================
@@ -33,6 +26,15 @@ if "current_user" not in st.session_state:
     st.stop()
 
 current_user = st.session_state.current_user
+
+# --- Аварийный режим (fallback) ---
+if current_user.get("is_fallback"):
+    st.session_state.data_source = "local"
+    st.warning(
+        "🔧 **Аварийный режим**: PostgreSQL недоступен. "
+        "Работаете с локальным Excel-файлом. "
+        "CRUD и администрирование недоступны."
+    )
 
 # --- Вспомогательные функции ---
 def get_local_ip() -> str:
@@ -132,10 +134,11 @@ st.sidebar.title("🎛️ Меню")
 user_role = current_user["role"]  # из проверки входа
 
 modes = ["Поиск", "Аналитика", "Сканирование"]
-if user_role in ("editor", "admin"):
-    modes.append("Редактирование")
-if user_role == "admin":
-    modes.append("Администрирование")
+if not current_user.get("is_fallback"):
+    if user_role in ("editor", "admin"):
+        modes.append("Редактирование")
+    if user_role == "admin":
+        modes.append("Администрирование")
 
 # Применяем "pending" переход (если какой-то view хочет сменить режим)
 pending_mode = st.session_state.pop("_pending_app_mode", None)

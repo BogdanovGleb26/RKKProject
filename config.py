@@ -33,14 +33,22 @@ def load_and_check_config():
     db_password = (os.getenv("DB_PASSWORD") or "").strip()
     db_enabled = bool(db_host and db_name and db_user and db_password)
 
+    # --- Аварийный вход (fallback) ---
+    fallback_admin_username = (os.getenv("FALLBACK_ADMIN_USERNAME") or "").strip()
+    fallback_admin_password = (os.getenv("FALLBACK_ADMIN_PASSWORD") or "").strip()
+    fallback_viewer_username = (os.getenv("FALLBACK_VIEWER_USERNAME") or "").strip()
+    fallback_viewer_password = (os.getenv("FALLBACK_VIEWER_PASSWORD") or "").strip()
+
     if not TOKEN or not DISK_PATH or not LOCAL_FILE_PATH or DEFAULT_DATA_SOURCE not in ["yadisk", "local"]:
-        st.error("❌ Не найдены переменные YANDEX_TOKEN или DISK_PATH в файле .env!")
+        st.error("❌ Не найдены нужные переменные в кредах!")
         st.stop()
 
     return (
         TOKEN, DISK_PATH, LOCAL_FILE_PATH, DEFAULT_DATA_SOURCE,
         images_dir, qr_form_url,
         db_host, db_port, db_name, db_user, db_password, db_enabled,
+        fallback_admin_username, fallback_admin_password,
+        fallback_viewer_username, fallback_viewer_password,
     )
 
 # Сразу экспортируем переменные для использования в других файлах
@@ -48,4 +56,6 @@ def load_and_check_config():
     TOKEN, DISK_PATH, LOCAL_FILE_PATH, DEFAULT_DATA_SOURCE,
     IMAGES_DIR, QR_FORM_URL,
     DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, DB_ENABLED,
+    FALLBACK_ADMIN_USERNAME, FALLBACK_ADMIN_PASSWORD,
+    FALLBACK_VIEWER_USERNAME, FALLBACK_VIEWER_PASSWORD,
 ) = load_and_check_config()

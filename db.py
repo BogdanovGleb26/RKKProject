@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 
 import config
 
@@ -92,8 +93,12 @@ def check_db_connection() -> tuple[bool, str]:
             return False, "БД доступна, но схема не создана (нет таблиц)"
         logger.info("Проверка БД: OK")
         return True, f"PostgreSQL • {config.DB_HOST}:{config.DB_PORT}/{config.DB_NAME}"
+    except OperationalError:
+        # БД недоступна — нормально при fallback-режиме, без трейсбека
+        logger.warning("check_db_connection: БД недоступна")
+        return False, "PostgreSQL недоступен"
     except Exception as e:
-        logger.exception("Ошибка подключения к БД")
+        logger.exception("check_db_connection: неожиданная ошибка")
         return False, f"Ошибка: {type(e).__name__}"
 
 
