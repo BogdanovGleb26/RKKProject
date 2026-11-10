@@ -133,7 +133,7 @@ st.sidebar.title("🎛️ Меню")
 # Роли и доступные режимы
 user_role = current_user["role"]  # из проверки входа
 
-modes = ["Поиск", "Аналитика", "Сканирование"]
+modes = ["Поиск", "Аналитика", "Сканирование", "Экспорт"]
 if not current_user.get("is_fallback"):
     if user_role in ("editor", "admin"):
         modes.append("Редактирование")
@@ -260,6 +260,9 @@ elif app_mode == "Аналитика":
     analytics_view.render()
 elif app_mode == "Сканирование":
     scanning_view.render()
+elif app_mode == "Экспорт":
+    from views import export_view
+    export_view.render()
 elif app_mode == "Редактирование":
     if user_role not in ("editor", "admin"):
         st.error("⛔ Недостаточно прав для доступа к этому разделу.")
