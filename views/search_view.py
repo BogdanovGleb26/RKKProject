@@ -14,6 +14,10 @@ PAGE_SIZE = 50
 def render():
     st.title("📦 Поиск по складу")
 
+    pending_query = st.session_state.pop("_pending_search_query", None)
+    if pending_query is not None:
+        st.session_state.search_input_field = pending_query
+
     source = st.session_state.get("data_source", config.DEFAULT_DATA_SOURCE)
     if source == "local":
         source_label = "Локальный ПК"

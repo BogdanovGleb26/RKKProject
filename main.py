@@ -137,7 +137,11 @@ if user_role in ("editor", "admin"):
 if user_role == "admin":
     modes.append("Администрирование")
 
-# Если текущий режим недоступен для роли — сбрасываем на "Поиск"
+# Применяем "pending" переход (если какой-то view хочет сменить режим)
+pending_mode = st.session_state.pop("_pending_app_mode", None)
+if pending_mode and pending_mode in modes:
+    st.session_state.app_mode = pending_mode
+
 if st.session_state.get("app_mode") and st.session_state.app_mode not in modes:
     st.session_state.app_mode = "Поиск"
 
@@ -244,7 +248,7 @@ if st.sidebar.button("🚪 Выйти", use_container_width=True, key="logout_bt
     st.session_state.pop("edit_sheet", None)
     st.rerun()
 
-st.sidebar.caption("© 2026 Инвентаризация v2.0.0")
+st.sidebar.caption("© 2026 Инвентаризация v3.0.0")
 
 # --- Маршрутизация с защитой по роли ---
 if app_mode == "Поиск":

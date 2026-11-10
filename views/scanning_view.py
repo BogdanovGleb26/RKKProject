@@ -4,6 +4,25 @@ import numpy as np
 from PIL import Image
 import streamlit as st
 
+from utils import extract_qr_code_from_url
+from repositories.item_search import find_items_by_qr_code
+from views.item_card import render_item_card
+
+from views.crud_views import (
+    procurement_form,
+    os_main_form,
+    plastic_form,
+    plastic_settings_form,
+)
+
+# Маппинг: table_id → form-модуль
+TABLE_TO_FORM = {
+    "procurement": procurement_form,
+    "os_main": os_main_form,
+    "plastic_spools": plastic_form,
+    "plastic_settings": plastic_settings_form,
+}
+
 
 MAX_PREVIEW = 1200
 MAX_DETECT = 3000
@@ -69,8 +88,102 @@ def scan_qr_code(img_np):
     return list(results)
 
 
+def _can_edit() -> bool:
+    """Редактирование доступно только editor/admin и только в postgres."""
+    user = st.session_state.get("current_user")
+    if not user:
+        return False
+    if user.get("role") not in ("editor", "admin"):
+        return False
+    source = st.session_state.get("data_source", "postgres")
+    if source != "postgres":
+        return False
+    return True
+
+
+def _on_edit(item_data: dict, table: str) -> None:
+    """Callback из карточки — открыть форму редактирования."""
+    st.session_state.scan_edit_action = {
+        "table": table,
+        "item_id": item_data.get("id"),
+        "qr_code": item_data.get("qr_code", ""),
+    }
+    st.rerun()
+
+
+def _render_scan_edit(action: dict) -> None:
+    """Форма редактирования вместо сканера."""
+    table = action.get("table")
+    item_id = action.get("item_id")
+    qr_code = action.get("qr_code", "")
+
+    user = st.session_state.get("audit_name") or st.session_state.get("current_user", {}).get("username", "—")
+
+    form_module = TABLE_TO_FORM.get(table)
+    if form_module is None:
+        st.error(f"Неизвестная таблица: {table}")
+        if st.button("← Назад к результатам сканирования"):
+            st.session_state.pop("scan_edit_action", None)
+            st.rerun()
+        return
+
+    # Кнопка «Назад» над формой
+    if st.button("← Назад к результатам сканирования"):
+        st.session_state.pop("scan_edit_action", None)
+        st.rerun()
+
+    def _on_success():
+        st.session_state.pop("scan_edit_action", None)
+        # Запоминаем qr_code, чтобы перечитать карточку после rerun
+        st.session_state["_scan_refresh_qr"] = qr_code
+
+    def _on_cancel():
+        st.session_state.pop("scan_edit_action", None)
+
+    form_module.render_edit_form(
+        item_id,
+        user,
+        on_success=_on_success,
+        on_cancel=_on_cancel,
+    )
+
+
 def render():
     st.title("📷 Сканер QR-кодов")
+
+def render():
+    st.title("📷 Сканер QR-кодов")
+
+    # --- 1. Активное редактирование из сканера ---
+    scan_edit = st.session_state.get("scan_edit_action")
+    if scan_edit:
+        _render_scan_edit(scan_edit)
+        return
+
+    # --- 2. Refresh после успешного сохранения ---
+    refresh_qr = st.session_state.pop("_scan_refresh_qr", None)
+    if refresh_qr:
+        st.info(f"🔄 Карточка обновлена (QR: **{refresh_qr}**)")
+        try:
+            found = find_items_by_qr_code(refresh_qr)
+        except Exception as e:
+            st.error(f"Ошибка загрузки: {e}")
+            found = []
+
+        if not found:
+            st.warning(f"Предмет с QR **«{refresh_qr}»** не найден после обновления.")
+        else:
+            for item_res in found:
+                render_item_card(
+                    item_res["data"],
+                    item_res["table"],
+                    on_edit_callback=_on_edit if _can_edit() else None,
+                )
+
+        if st.button("📷 Сканировать новый QR"):
+            st.rerun()
+        return
+
     st.write("Загрузите изображение с QR-кодом или сделайте фото через веб-камеру.")
 
     source_option = st.segmented_control(
@@ -137,13 +250,69 @@ def render():
             st.success(f"🎉 Найдено QR-кодов: {len(qr_data_list)}")
 
             for idx, data in enumerate(qr_data_list, start=1):
-                st.subheader(f"Результат #{idx}")
-                st.code(data, language="text")
+                # 1. Извлекаем qr_code из распознанного текста
+                qr_code = extract_qr_code_from_url(data)
 
-                if data.lower().startswith(("http://", "https://")):
-                    st.link_button("🌐 Перейти по ссылке", data, width="stretch")
+                if not qr_code:
+                    st.warning(
+                        f"QR #{idx}: не удалось извлечь код из распознанного текста."
+                    )
+                    with st.expander("Показать распознанный текст"):
+                        st.code(data, language="text")
+
+                    # Если распознанный текст — URL, предложить перейти по ссылке
+                    if data.strip().lower().startswith(("http://", "https://")):
+                        st.link_button(
+                            "🌐 Перейти по ссылке",
+                            data.strip(),
+                            width="stretch",
+                        )
+
+                    continue
+
+                # 2. Ищем в БД
+                with st.spinner(f"Поиск по QR «{qr_code}»..."):
+                    try:
+                        found = find_items_by_qr_code(qr_code)
+                    except Exception as e:
+                        st.error(f"Ошибка поиска: {e}")
+                        continue
+
+                # 3. Показываем результат
+                if not found:
+                    st.warning(
+                        f"❌ Предмет с QR-кодом **«{qr_code}»** не найден в базе."
+                    )
+                    if st.button(
+                        "🔍 Поискать в базе по другим параметрам",
+                        key=f"search_fallback_{idx}",
+                    ):
+                        st.session_state["_pending_search_query"] = qr_code
+                        st.session_state["_pending_app_mode"] = "Поиск"
+                        st.rerun()
+                    continue
+
+                if len(found) == 1:
+                    render_item_card(
+                        found[0]["data"],
+                        found[0]["table"],
+                        on_edit_callback=_on_edit if _can_edit() else None,
+                    )
                 else:
-                    st.info("Распознанный текст не является веб-ссылкой.")
+                    # Несколько предметов — список с пометкой таблицы
+                    st.info(
+                        f"🔎 Найдено несколько предметов с QR **«{qr_code}»**:"
+                    )
+                    for item_res in found:
+                        st.markdown(
+                            f"**{item_res['table_label']}** · "
+                            f"id={item_res['data'].get('id')}"
+                        )
+                        render_item_card(
+                            item_res["data"],
+                            item_res["table"],
+                            on_edit_callback=_on_edit if _can_edit() else None,
+                        )
         else:
             st.warning(
                 "QR-код не обнаружен. Попробуйте сделать снимок ровнее, ближе "

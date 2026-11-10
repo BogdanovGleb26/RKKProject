@@ -150,12 +150,20 @@ def render_create_form(user: str) -> None:
 # Edit
 # =============================================================================
 
-def render_edit_form(item_id: int, user: str) -> None:
+def render_edit_form(
+    item_id: int,
+    user: str,
+    on_success=None,
+    on_cancel=None,
+) -> None:
     current = get_os_main_by_id(item_id)
     if current is None:
         st.error("Позиция не найдена или удалена.")
-        if st.button("← Назад к списку"):
-            st.session_state.pop("edit_action", None)
+        if st.button("← Назад"):
+            if on_cancel is not None:
+                on_cancel()
+            else:
+                st.session_state.pop("edit_action", None)
             st.rerun()
         return
 
@@ -165,7 +173,6 @@ def render_edit_form(item_id: int, user: str) -> None:
         f"последнее изменение: {current.get('updated_by') or '—'}"
     )
 
-    # ← НОВОЕ: фиксируем expected_version при первом открытии формы
     version_key = f"_edit_expected_version_{item_id}"
     if version_key not in st.session_state:
         st.session_state[version_key] = current.get("row_version", 1)
@@ -182,9 +189,11 @@ def render_edit_form(item_id: int, user: str) -> None:
             cancelled = st.form_submit_button("✖ Отмена", width="stretch")
 
     if cancelled:
-        # ← НОВОЕ: очищаем зафиксированную версию
         st.session_state.pop(version_key, None)
-        st.session_state.pop("edit_action", None)
+        if on_cancel is not None:
+            on_cancel()
+        else:
+            st.session_state.pop("edit_action", None)
         st.rerun()
 
     if submitted:
@@ -196,8 +205,11 @@ def render_edit_form(item_id: int, user: str) -> None:
             if ok:
                 st.success("✅ Сохранено")
                 fetch_df.clear()
-                st.session_state.pop(version_key, None)   # ← НОВОЕ
-                st.session_state.pop("edit_action", None)
+                st.session_state.pop(version_key, None)
+                if on_success is not None:
+                    on_success()
+                else:
+                    st.session_state.pop("edit_action", None)
                 time.sleep(1.5)
                 st.rerun()
             else:

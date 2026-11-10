@@ -3,6 +3,7 @@ from html import escape
 
 import io
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, unquote
 
 import streamlit as st
 from PIL import Image
@@ -303,3 +304,37 @@ def item_has_photo(code: str) -> bool:
     if not code:
         return False
     return find_item_image(code, "photo") is not None
+
+
+def extract_qr_code_from_url(data: str) -> str | None:
+    """Извлекает qr_code из распознанного QR-текста.
+
+    Поддерживает:
+    - URL Google Forms: ...entry.708913562=МТО00004754237 → 'МТО00004754237'
+    - Голый qr_code: 'МТО00004754237' → 'МТО00004754237'
+
+    Возвращает None, если data пустое или не удалось извлечь.
+    """
+    if not data:
+        return None
+    data = data.strip()
+    if not data:
+        return None
+
+    # Если это не URL — считаем, что это уже qr_code
+    if not data.lower().startswith(("http://", "https://")):
+        return data
+
+    try:
+        parsed = urlparse(data)
+        params = parse_qs(parsed.query)
+        # Ищем параметр entry.* (Google Forms)
+        for key, values in params.items():
+            if key.startswith("entry.") and values:
+                extracted = unquote(values[0]).strip()
+                if extracted:
+                    return extracted
+        # Если параметров entry.* нет — вернуть None
+        return None
+    except Exception:
+        return None

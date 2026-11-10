@@ -86,13 +86,20 @@ def render_create_form(user: str) -> None:
 # Edit
 # =============================================================================
 
-def render_edit_form(item_id: int, user: str) -> None:
-    """user игнорируется (справочник без аудита)."""
+def render_edit_form(
+    item_id: int,
+    user: str,
+    on_success=None,
+    on_cancel=None,
+) -> None:
     current = get_plastic_settings_by_id(item_id)
     if current is None:
         st.error("Запись не найдена.")
-        if st.button("← Назад к списку"):
-            st.session_state.pop("edit_action", None)
+        if st.button("← Назад"):
+            if on_cancel is not None:
+                on_cancel()
+            else:
+                st.session_state.pop("edit_action", None)
             st.rerun()
         return
 
@@ -109,7 +116,10 @@ def render_edit_form(item_id: int, user: str) -> None:
             cancelled = st.form_submit_button("✖ Отмена", width="stretch")
 
     if cancelled:
-        st.session_state.pop("edit_action", None)
+        if on_cancel is not None:
+            on_cancel()
+        else:
+            st.session_state.pop("edit_action", None)
         st.rerun()
 
     if submitted:
@@ -121,7 +131,10 @@ def render_edit_form(item_id: int, user: str) -> None:
             if ok:
                 st.success("✅ Сохранено")
                 fetch_df.clear()
-                st.session_state.pop("edit_action", None)
+                if on_success is not None:
+                    on_success()
+                else:
+                    st.session_state.pop("edit_action", None)
                 time.sleep(1.5)
                 st.rerun()
             else:
