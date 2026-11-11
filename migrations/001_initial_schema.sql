@@ -1,16 +1,18 @@
 -- =============================================================================
 -- 001_initial_schema.sql
--- Начальная схема БД для приложения «Инвентаризация»
+-- Начальная схема БД для приложения «Инвентаризация».
 -- Применяется один раз при развёртывании.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- Триггерная функция: автоматически обновляет updated_at при UPDATE
+-- Триггерная функция: обновляет updated_at и увеличивает row_version при UPDATE.
+-- Используется на всех таблицах с row_version.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION set_updated_at()
+CREATE OR REPLACE FUNCTION set_updated_at_and_version()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
+    NEW.row_version = COALESCE(OLD.row_version, 0) + 1;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -77,9 +79,9 @@ CREATE INDEX idx_procurement_dept ON procurement(mto_department);
 CREATE INDEX idx_procurement_project ON procurement(project);
 CREATE INDEX idx_procurement_curator ON procurement(mto_curator);
 
-CREATE TRIGGER trg_procurement_updated_at
+CREATE TRIGGER trg_procurement_updated_at_and_version
 BEFORE UPDATE ON procurement
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
 
 
 -- =============================================================================
@@ -141,9 +143,9 @@ CREATE INDEX idx_os_main_dept ON os_main(mto_department);
 CREATE INDEX idx_os_main_project ON os_main(project);
 CREATE INDEX idx_os_main_curator ON os_main(mto_curator);
 
-CREATE TRIGGER trg_os_main_updated_at
+CREATE TRIGGER trg_os_main_updated_at_and_version
 BEFORE UPDATE ON os_main
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
 
 
 -- =============================================================================
@@ -177,9 +179,9 @@ CREATE INDEX idx_plastic_qr_code ON plastic_spools(qr_code);
 CREATE INDEX idx_plastic_type ON plastic_spools(type);
 CREATE INDEX idx_plastic_storage ON plastic_spools(storage_location);
 
-CREATE TRIGGER trg_plastic_updated_at
+CREATE TRIGGER trg_plastic_updated_at_and_version
 BEFORE UPDATE ON plastic_spools
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
 
 
 -- =============================================================================
@@ -194,51 +196,20 @@ CREATE TABLE plastic_settings (
     notes           TEXT
 );
 
---- Фикс для обновления updated_at и row_version при UPDATE
 
--- 1. Удаляем старый триггер
-DROP TRIGGER IF EXISTS trg_procurement_updated_at ON procurement;
-DROP TRIGGER IF EXISTS trg_os_main_updated_at ON os_main;
-DROP TRIGGER IF EXISTS trg_plastic_updated_at ON plastic_spools;
-
--- 2. Обновляем функцию
-CREATE OR REPLACE FUNCTION set_updated_at_and_version()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    NEW.row_version = COALESCE(OLD.row_version, 0) + 1;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- 3. Создаём новые триггеры
-CREATE TRIGGER trg_procurement_updated_at_and_version
-BEFORE UPDATE ON procurement
-FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
-
-CREATE TRIGGER trg_os_main_updated_at_and_version
-BEFORE UPDATE ON os_main
-FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
-
-CREATE TRIGGER trg_plastic_updated_at_and_version
-BEFORE UPDATE ON plastic_spools
-FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_version();
-
--- Таблица пользователей для аутентификации и авторизации
-
-CREATE TABLE IF NOT EXISTS users (
-    id BIGSERIAL PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'viewer'
+-- =============================================================================
+-- 5. users (Аутентификация и роли)
+-- =============================================================================
+CREATE TABLE users (
+    id              BIGSERIAL PRIMARY KEY,
+    username        TEXT UNIQUE NOT NULL,
+    password_hash   TEXT NOT NULL,
+    role            TEXT NOT NULL DEFAULT 'viewer'
         CHECK (role IN ('admin', 'editor', 'viewer')),
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
-
-SELECT table_name FROM information_schema.tables 
-WHERE table_schema = 'public' AND table_name = 'users';
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_is_active ON users(is_active);
