@@ -36,6 +36,13 @@ if current_user.get("is_fallback"):
         "CRUD и администрирование недоступны."
     )
 
+# --- Баннер о тестовых данных ---
+if st.session_state.get("data_source") == "yadisk":
+    st.warning(
+        "🧪 **Вы работаете с тестовыми данными на Яндекс.Диске.** "
+        "Это не реальные складские данные!"
+    )
+
 # --- Вспомогательные функции ---
 def get_local_ip() -> str:
     try:
@@ -104,7 +111,7 @@ def refresh_source_statuses():
 def format_source_option(source: str) -> str:
     """Человекочитаемая метка для селекта с индикатором статуса."""
     labels = {
-        "yadisk": "Яндекс.Диск",
+        "yadisk": "🧪 Яндекс.Диск (тестовые)",
         "local": "Локальный ПК",
         "postgres": "PostgreSQL",
     }
@@ -157,7 +164,10 @@ app_mode = st.sidebar.radio(
 st.sidebar.divider()
 
 # 📁 Переключатель источника данных (динамический)
-source_options = {"yadisk": "Яндекс.Диск", "local": "Локальный ПК"}
+source_options = {
+    "yadisk": "🧪 Яндекс.Диск (тестовые данные)",
+    "local": "Локальный ПК",
+}
 if config.DB_ENABLED:
     source_options["postgres"] = "PostgreSQL"
 source_keys = list(source_options.keys())
