@@ -267,11 +267,12 @@ def _get_sheet_from_db(sheet_name: str) -> tuple[pd.DataFrame, str]:
     else:
         last_str = "—"
 
-    # Убираем служебные колонки (уже не нужны)
-    # id оставляем — он нужен для кнопок «Редактировать» / «Удалить».
+    # Убираем служебные колонки (уже не нужны).
+    # Оставляем:
+    # - id (для CRUD-кнопок)
+    # - created_by, updated_by, updated_at (для аудита)
     service_cols = [
         "is_deleted", "deleted_at", "deleted_by",
-        "created_at", "created_by", "updated_at", "updated_by",
         "row_version",
     ]
     df = df.drop(columns=[c for c in service_cols if c in df.columns])

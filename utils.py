@@ -11,6 +11,8 @@ from PIL import Image
 import qrcode
 from config import IMAGES_DIR, QR_FORM_URL
 
+import pandas as pd
+
 HIGHLIGHT_STYLE = (
     "background-color: #ffe066; padding: 2px 4px; "
     "border-radius: 4px; color: #000;"
@@ -338,3 +340,77 @@ def extract_qr_code_from_url(data: str) -> str | None:
         return None
     except Exception:
         return None
+
+
+def format_audit_info(row) -> str:
+    """Формирует строку с информацией об авторе записи.
+
+    Приоритет:
+    1. Если запись создана и не изменялась (created_at ≈ updated_at) →
+       «Создано».
+    2. Если изменялась (updated_by есть, даты различаются) → «Изменено».
+    3. Если created_by есть, но нет updated_by → «Создано».
+    4. Иначе → «Импорт из Excel».
+    """
+    created_by = str(row.get("created_by", "") or "").strip()
+    updated_by = str(row.get("updated_by", "") or "").strip()
+    updated_at = row.get("updated_at")
+    created_at = row.get("created_at")
+
+    # --- Форматирование даты изменения ---
+    updated_dt_str = ""
+    if updated_at is not None and pd.notna(updated_at):
+        try:
+            dt = pd.to_datetime(updated_at, utc=True)
+            dt = dt.tz_convert("Europe/Moscow")
+            updated_dt_str = dt.strftime("%d.%m.%Y %H:%M")
+        except Exception:
+            updated_dt_str = ""
+
+    # --- Форматирование даты создания ---
+    created_dt_str = ""
+    if created_at is not None and pd.notna(created_at):
+        try:
+            dt = pd.to_datetime(created_at, utc=True)
+            dt = dt.tz_convert("Europe/Moscow")
+            created_dt_str = dt.strftime("%d.%m.%Y %H:%M")
+        except Exception:
+            created_dt_str = ""
+
+    # --- Сравнение created_at и updated_at ---
+    is_created_only = False
+    if created_at is not None and updated_at is not None:
+        try:
+            ca = pd.to_datetime(created_at, utc=True)
+            ua = pd.to_datetime(updated_at, utc=True)
+            if pd.notna(ca) and pd.notna(ua):
+                is_created_only = abs((ua - ca).total_seconds()) < 2
+        except Exception:
+            is_created_only = False
+
+    # --- Логика отображения ---
+    # 1. Создано и не изменялось
+    if is_created_only and created_by:
+        base = f"👤 Создано: **{created_by}**"
+        if created_dt_str:
+            base += f" ({created_dt_str})"
+        return base
+
+    # 2. Изменялось
+    if updated_by:
+        base = f"✏️ Изменено: **{updated_by}**"
+        if updated_dt_str:
+            base += f" ({updated_dt_str})"
+        if not created_by:
+            base = "📥 Импорт → " + base
+        return base
+
+    # 3. Создано, но updated_by пуст
+    if created_by:
+        base = f"👤 Создано: **{created_by}**"
+        if created_dt_str:
+            base += f" ({created_dt_str})"
+        return base
+
+    # 4. Импорт
+    return "📥 Импорт из Excel"

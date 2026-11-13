@@ -6,7 +6,7 @@
 
 import streamlit as st
 
-from utils import get_item_image_bytes, get_item_qr_bytes
+from utils import get_item_image_bytes, get_item_qr_bytes, format_audit_info
 
 
 # Маппинг: таблица → набор ключевых полей для отображения
@@ -142,6 +142,12 @@ def render_item_card(item: dict, table: str, *, on_edit_callback=None):
                 st.image(qr_bytes, width=400)
             else:
                 st.caption("📱 Нет QR")
+
+        # ← Информация об авторе (только для postgres)
+        if st.session_state.get("data_source") == "postgres":
+            audit_info = format_audit_info(item)
+            if audit_info:
+                st.caption(audit_info)              
 
         # Expander со всеми полями
         with st.expander("📋 Все поля"):

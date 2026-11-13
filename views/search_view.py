@@ -2,7 +2,11 @@ import pandas as pd
 import streamlit as st
 import re
 from data_loader import load_data
-from utils import highlight_text, create_badge, get_item_image_bytes, get_item_qr_bytes, item_has_photo
+from utils import (
+    highlight_text, create_badge,
+    get_item_image_bytes, get_item_qr_bytes, item_has_photo,
+    format_audit_info
+)
 import config
 from db import get_sheet_df
 
@@ -300,6 +304,10 @@ def render():
                             st.markdown(f"**📌 Статус:** {status if status else '—'}")
                         if "QR код" in df.columns:
                             st.markdown(f"**🏷️ QR код:** {qr_code}")
+                    # ← Информация об авторе (только для postgres)
+                    if source == "postgres":
+                        audit_info = format_audit_info(row)
+                        st.caption(audit_info)
 
                     st.divider()
 
@@ -341,4 +349,4 @@ def render():
                         if qr_bytes:
                             st.image(qr_bytes, width=400)
                         else:
-                            st.caption("📱 Нет QR")
+                            st.caption("📱 Нет QR")            
