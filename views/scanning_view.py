@@ -1,10 +1,10 @@
 import io
-import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 import streamlit as st
 
 from utils import extract_qr_code_from_url
+from qr_decoder import scan_qr_code
 from repositories.item_search import find_items_by_qr_code
 from views.item_card import render_item_card
 
@@ -25,7 +25,7 @@ TABLE_TO_FORM = {
 
 
 MAX_PREVIEW = 1200
-MAX_DETECT = 3000
+MAX_DETECT = 4000
 
 
 def _maybe_resize(pil_image: Image.Image, max_size: int) -> tuple[Image.Image, bool]:
@@ -38,54 +38,10 @@ def _maybe_resize(pil_image: Image.Image, max_size: int) -> tuple[Image.Image, b
     return pil_image.resize(new_size, Image.LANCZOS), True
 
 
-def preprocess_image(gray_img):
-    """Создает несколько вариантов обработанного изображения."""
-    variants = [
-        gray_img,
-        cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray_img),
-        cv2.adaptiveThreshold(
-            gray_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-        ),
-    ]
-    _, otsu = cv2.threshold(gray_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    variants.append(otsu)
-    return variants
-
-
-def scan_qr_code(img_np):
-    """Распознавание QR-кодов с многоэтапной обработкой кадров."""
-    # Локальный детектор — thread-safe при параллельных сессиях Streamlit
-    qr_detector = cv2.QRCodeDetector()
-
-    if len(img_np.shape) == 3:
-        if img_np.shape[2] == 4:
-            img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2RGB)
-        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-    else:
-        gray = img_np
-
-    h, w = gray.shape[:2]
-    if max(h, w) < 1200:
-        gray = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
-
-    image_variants = preprocess_image(gray)
-    results = set()
-
-    for img_variant in image_variants:
-        retval, decoded_info, _, _ = qr_detector.detectAndDecodeMulti(img_variant)
-        if retval:
-            for info in decoded_info:
-                if info and info.strip():
-                    results.add(info.strip())
-
-        data, _, _ = qr_detector.detectAndDecode(img_variant)
-        if data and data.strip():
-            results.add(data.strip())
-
-        if results:
-            break
-
-    return list(results)
+@st.cache_data(show_spinner=False, max_entries=16)
+def _scan_cached(img_np: np.ndarray) -> list[str]:
+    """Кэш по содержимому изображения: лишние rerun не запускают распознавание заново."""
+    return scan_qr_code(img_np)
 
 
 def _can_edit() -> bool:
@@ -147,9 +103,6 @@ def _render_scan_edit(action: dict) -> None:
         on_cancel=_on_cancel,
     )
 
-
-def render():
-    st.title("📷 Сканер QR-кодов")
 
 def render():
     st.title("📷 Сканер QR-кодов")
@@ -219,6 +172,8 @@ def render():
         try:
             pil_image = Image.open(io.BytesIO(image_bytes))
             pil_image.load()
+            # Учитываем EXIF-ориентацию (фото с телефона часто «повёрнуты» через EXIF)
+            pil_image = ImageOps.exif_transpose(pil_image)
         except Exception as e:
             st.error(
                 f"Не удалось открыть изображение: {type(e).__name__}. "
@@ -244,7 +199,7 @@ def render():
         img_np = np.array(detect_image)
 
         with st.spinner("Распознавание QR-кода..."):
-            qr_data_list = scan_qr_code(img_np)
+            qr_data_list = _scan_cached(img_np)
 
         if qr_data_list:
             st.success(f"🎉 Найдено QR-кодов: {len(qr_data_list)}")
@@ -314,9 +269,9 @@ def render():
                             on_edit_callback=_on_edit if _can_edit() else None,
                         )
         else:
+            # Кнопку «Попробовать снова» убрали: из-за кэша она бы вернула тот же результат.
+            # Нужно загрузить/снять другое фото.
             st.warning(
                 "QR-код не обнаружен. Попробуйте сделать снимок ровнее, ближе "
-                "или с лучшим освещением."
+                "или с лучшим освещением, и загрузите новое фото."
             )
-            if st.button("🔄 Попробовать снова"):
-                st.rerun()
