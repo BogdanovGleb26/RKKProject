@@ -144,6 +144,7 @@ modes = ["Поиск", "Аналитика", "Сканирование", "Экс
 if not current_user.get("is_fallback"):
     if user_role in ("editor", "admin"):
         modes.append("Редактирование")
+        modes.append("Синхронизация")
     if user_role == "admin":
         modes.append("Администрирование")
 
@@ -243,7 +244,6 @@ if st.sidebar.button(
 #     use_container_width=True,
 # )
 
-
 st.sidebar.divider()
 
 st.sidebar.caption(
@@ -273,6 +273,12 @@ elif app_mode == "Сканирование":
 elif app_mode == "Экспорт":
     from views import export_view
     export_view.render()
+elif app_mode == "Синхронизация":
+    if user_role not in ("editor", "admin"):
+            st.error("⛔ Недостаточно прав для доступа к этому разделу.")
+            st.stop()
+    from views import sync_view
+    sync_view.render()
 elif app_mode == "Редактирование":
     if user_role not in ("editor", "admin"):
         st.error("⛔ Недостаточно прав для доступа к этому разделу.")
